@@ -9,3 +9,4 @@
   text-align: center; line-height: 1.5; color: var(--text-2); pointer-events: none;
 }
 .editing canvas { cursor: crosshair; }
+.stencil { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0.35; pointer-events: none; }

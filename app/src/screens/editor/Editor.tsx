@@ -8,6 +8,7 @@ import { describeScene, resolvePart, toolToCommand } from '@/domain/scene/tools'
 import type { Part, Shape, Vec3 } from '@/domain/scene/model'
 import { buildMaterial } from '@/domain/materials/buildMaterial'
 import { fillColor } from '@/domain/paint/paint'
+import { clearMask, invertMask } from '@/domain/sculpt/brushes'
 import { useMcpBridge, type ToolHandler } from '@/domain/mcp/useMcpBridge'
 import type { MaterialSpec } from '@/shared/config/materials'
 import { refresh } from '@/shared/lib/meshOps'
@@ -22,7 +23,7 @@ import { SculptPanel } from './EditPanels/SculptPanel'
 import { PaintPanel } from './EditPanels/PaintPanel'
 import { Toast, type ToastMessage } from './Toast/Toast'
 import { claudeToast } from './claudeToast'
-import { fillFromTool, paintFromTool, sculptFromTool } from './mcpEdit'
+import { fillFromTool, gradientFromTool, maskFromTool, paintFromTool, sculptFromTool } from './mcpEdit'
 import {
   DEFAULT_PAINT, DEFAULT_SCULPT, LOOK_VIEWS,
   type CaptureFn, type EditHooks, type LookView, type Mode, type PaintSettings, type SculptSettings, type Tool,
@@ -107,6 +108,15 @@ export function Editor() {
     onPick: (color) => setPaint((p) => ({ ...p, color, tool: 'pincel' })),
   }), [])
 
+  const mask = useCallback((action: 'invertir' | 'borrar') => {
+    const id = useScene.getState().selectedId
+    const g = id ? startEdit(id, false) : null
+    if (!g) return
+    if (action === 'invertir') invertMask(g)
+    else clearMask(g)
+    refresh(g, false, false, true)
+  }, [])
+
   const moreDetail = useCallback(() => {
     const id = useScene.getState().selectedId
     if (id && startEdit(id, false, true)) notify(t.moreDetail)
@@ -139,16 +149,24 @@ export function Editor() {
         return { data: bufferToBase64(await exportGlb(s.parts, materialFor)) }
       case 'sculpt_stroke':
       case 'paint_stroke':
+      case 'paint_gradient':
       case 'fill_color':
+      case 'mask':
       case 'add_detail': {
         const part = resolvePart(s.parts, args.part)
-        const g = startEdit(part.id, name === 'paint_stroke' || name === 'fill_color', name === 'add_detail')
+        const forPaint = name === 'paint_stroke' || name === 'paint_gradient' || name === 'fill_color'
+        const g = startEdit(part.id, forPaint, name === 'add_detail')
         if (!g) throw new Error('Esa parte no se puede editar.')
         const fresh = useScene.getState().parts.find((p) => p.id === part.id)!
         if (name === 'sculpt_stroke') sculptFromTool(g, fresh, args)
         if (name === 'paint_stroke') paintFromTool(g, fresh, args)
+        if (name === 'paint_gradient') gradientFromTool(g, fresh, args)
         if (name === 'fill_color') fillFromTool(g, args)
-        const verb = { sculpt_stroke: 'esculpió', paint_stroke: 'pintó', fill_color: 'pintó entera', add_detail: 'le dio más detalle a' }[name]
+        if (name === 'mask') maskFromTool(g, args)
+        const verb = {
+          sculpt_stroke: 'esculpió', paint_stroke: 'pintó', paint_gradient: 'le hizo un degradado a', fill_color: 'pintó entera',
+          mask: 'cambió la máscara de', add_detail: 'le dio más detalle a',
+        }[name]
         notify(`Claude ${verb} ${part.name}`, true)
         return { part: part.name, vertices: g.attributes.position.count }
       }
@@ -265,7 +283,7 @@ export function Editor() {
           {dragging && <div className={styles.drop}>{t.dropHere}</div>}
         </div>
         {mode === 'esculpir' && (
-          <SculptPanel partName={selected?.name ?? null} settings={sculpt} onChange={(patch) => setSculpt((p) => ({ ...p, ...patch }))} onMoreDetail={moreDetail} />
+          <SculptPanel partName={selected?.name ?? null} settings={sculpt} onChange={(patch) => setSculpt((p) => ({ ...p, ...patch }))} onMoreDetail={moreDetail} onMask={mask} />
         )}
         {mode === 'pintar' && (
           <PaintPanel partName={selected?.name ?? null} settings={paint} onChange={(patch) => setPaint((p) => ({ ...p, ...patch }))} />

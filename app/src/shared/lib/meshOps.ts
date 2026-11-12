@@ -21,9 +21,11 @@ export function subdivide(g: BufferGeometry): BufferGeometry {
   const pos = g.attributes.position.array as ArrayLike<number>
   const idx = g.index!.array as ArrayLike<number>
   const col = g.hasAttribute('color') ? (g.attributes.color.array as ArrayLike<number>) : null
+  const msk = g.hasAttribute('mask') ? (g.attributes.mask.array as ArrayLike<number>) : null
   const n = g.attributes.position.count
   const verts = Array.from(pos)
   const colors = col ? Array.from(col) : null
+  const masks = msk ? Array.from(msk) : null
   const mids = new Map<number, number>()
   const mid = (a: number, b: number) => {
     const key = a < b ? a * n + b : b * n + a
@@ -32,6 +34,7 @@ export function subdivide(g: BufferGeometry): BufferGeometry {
     const i = verts.length / 3
     for (let k = 0; k < 3; k++) verts.push((verts[a * 3 + k] + verts[b * 3 + k]) / 2)
     if (colors) for (let k = 0; k < 3; k++) colors.push((colors[a * 3 + k] + colors[b * 3 + k]) / 2)
+    if (masks) masks.push((masks[a] + masks[b]) / 2)
     mids.set(key, i)
     return i
   }
@@ -44,6 +47,7 @@ export function subdivide(g: BufferGeometry): BufferGeometry {
   const next = new BufferGeometry()
   next.setAttribute('position', new BufferAttribute(new Float32Array(verts), 3))
   if (colors) next.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3))
+  if (masks) next.setAttribute('mask', new BufferAttribute(new Float32Array(masks), 1))
   next.setIndex(new BufferAttribute(new Uint32Array(out), 1))
   return next
 }
@@ -72,7 +76,13 @@ export function toEditable(src: BufferGeometry, opts: EditableOptions = {}): Buf
   const colors = new Float32Array(g.attributes.position.count * 3)
   for (let i = 0; i < colors.length; i += 3) { colors[i] = c.r; colors[i + 1] = c.g; colors[i + 2] = c.b }
   g.setAttribute('color', new BufferAttribute(colors, 3))
+  g.setAttribute('mask', new BufferAttribute(new Float32Array(g.attributes.position.count), 1))
   return finish(g)
+}
+
+/** Asegura el atributo de máscara (0 = libre, 1 = protegido). */
+export function ensureMask(g: BufferGeometry): void {
+  if (!g.hasAttribute('mask')) g.setAttribute('mask', new BufferAttribute(new Float32Array(g.attributes.position.count), 1))
 }
 
 /** Más detalle: subdivide una vez (si no se pasa del máximo). */
@@ -128,7 +138,8 @@ export function nearestVertex(g: BufferGeometry, p: Vector3): { point: Vector3; 
 }
 
 /** Después de mover vértices: normales, cajas y aviso a la GPU. */
-export function refresh(g: BufferGeometry, moved: boolean, painted: boolean): void {
+export function refresh(g: BufferGeometry, moved: boolean, painted: boolean, masked = false): void {
+  if (masked && g.hasAttribute('mask')) g.attributes.mask.needsUpdate = true
   if (moved) {
     g.attributes.position.needsUpdate = true
     g.computeVertexNormals()

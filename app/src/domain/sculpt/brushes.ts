@@ -1,81 +1,47 @@
-import type { BufferGeometry } from 'three'
-import { Vector3 } from 'three'
-import { neighbors } from '@/shared/lib/meshOps'
+import { Vector3, type BufferGeometry } from 'three'
+import { neighbors, ensureMask } from '@/shared/lib/meshOps'
+import { shapeWeights, type BrushShape } from '@/shared/lib/brushShape'
 
-export const SCULPT_BRUSHES = ['sumar', 'quitar', 'aplanar', 'suavizar', 'inflar', 'pellizcar', 'arrastrar', 'cortar'] as const
+export const SCULPT_BRUSHES = [
+  'sumar', 'quitar', 'arcilla', 'capa', 'aplanar', 'suavizar', 'inflar', 'pellizcar', 'pliegue', 'arrastrar', 'gancho', 'cortar', 'mascara',
+] as const
 export type SculptBrush = (typeof SCULPT_BRUSHES)[number]
 
-export const TIPS = ['suave', 'dura', 'cuadrada', 'triangulo', 'linea'] as const
-export type Tip = (typeof TIPS)[number]
+/** Pinceles que se aplican de a pinceladas (arrastrar y gancho mueven con el mouse). */
+export type DabBrush = Exclude<SculptBrush, 'arrastrar' | 'gancho'>
 
-/** Todo en el espacio local de la parte. */
-export interface Dab {
-  center: Vector3
-  normal: Vector3
-  radius: number
+export interface Dab extends BrushShape {
   /** 0..1 */
   strength: number
-  tip: Tip
-  /** Giro de la punta en grados (para las que no son redondas). */
-  angle: number
+  /** Alt: hace lo contrario (quitar en vez de sumar, borrar máscara…). */
+  invert?: boolean
 }
 
-/** Base del plano tangente: u, v perpendiculares a la normal, girados `angle` grados. */
-export function tangentBasis(normal: Vector3, angle: number): [Vector3, Vector3] {
-  const ref = Math.abs(normal.y) < 0.9 ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0)
-  const u = new Vector3().crossVectors(ref, normal).normalize()
-  const v = new Vector3().crossVectors(normal, u).normalize()
-  const a = (angle * Math.PI) / 180
-  const cu = u.clone().multiplyScalar(Math.cos(a)).addScaledVector(v, Math.sin(a))
-  const cv = v.clone().multiplyScalar(Math.cos(a)).addScaledVector(u, -Math.sin(a))
-  return [cu, cv]
+/** Estado de un trazo (para Capa: recuerda cómo estaba la superficie al empezar). */
+export interface StrokeContext {
+  orig: Float32Array
+  origNormal: Float32Array
+  layer: Float32Array
 }
 
-const TRI_DIRS = [90, 210, 330].map((d) => [Math.cos((d * Math.PI) / 180), Math.sin((d * Math.PI) / 180)])
-
-/**
- * Cuánto afecta la punta a un punto (0..1). du, dv: coordenadas en el plano tangente; h: altura sobre él.
- * Es pura para poder dibujar la misma forma en el cursor.
- */
-export function tipWeight(tip: Tip, du: number, dv: number, h: number, r: number): number {
-  if (Math.abs(h) > r) return 0
-  const soft = (x: number) => (x >= 1 ? 0 : (1 - x * x) * (1 - x * x))
-  const hard = (x: number) => (x >= 1 ? 0 : x < 0.8 ? 1 : (1 - x) / 0.2)
-  switch (tip) {
-    case 'suave': return soft(Math.hypot(du, dv, h * 0.5) / r)
-    case 'dura': return hard(Math.hypot(du, dv, h * 0.5) / r)
-    case 'cuadrada': return hard(Math.max(Math.abs(du), Math.abs(dv)) / r)
-    case 'triangulo': return hard(Math.max(...TRI_DIRS.map(([x, y]) => du * x + dv * y)) / (r * 0.5))
-    case 'linea': return hard(Math.max(Math.abs(du) / r, Math.abs(dv) / (r * 0.22)))
+export function strokeContext(g: BufferGeometry): StrokeContext {
+  return {
+    orig: Float32Array.from(g.attributes.position.array as ArrayLike<number>),
+    origNormal: Float32Array.from(g.attributes.normal.array as ArrayLike<number>),
+    layer: new Float32Array(g.attributes.position.count),
   }
 }
 
-/** Pesos de los vértices alcanzados por una pincelada. */
-export function dabWeights(g: BufferGeometry, dab: Dab): { index: number; w: number }[] {
-  const pos = g.attributes.position
-  const [u, v] = tangentBasis(dab.normal, dab.angle)
-  const out: { index: number; w: number }[] = []
-  const r = dab.radius
-  const c = dab.center
-  for (let i = 0; i < pos.count; i++) {
-    const dx = pos.getX(i) - c.x, dy = pos.getY(i) - c.y, dz = pos.getZ(i) - c.z
-    if (Math.abs(dx) > r * 1.2 || Math.abs(dy) > r * 1.2 || Math.abs(dz) > r * 1.2) continue
-    const h = dx * dab.normal.x + dy * dab.normal.y + dz * dab.normal.z
-    const du = dx * u.x + dy * u.y + dz * u.z
-    const dv = dx * v.x + dy * v.y + dz * v.z
-    const w = tipWeight(dab.tip, du, dv, h, r)
-    if (w > 0) out.push({ index: i, w })
-  }
-  return out
-}
-
-/** Aplica una pincelada de esculpir. Devuelve cuántos vértices movió. */
-export function sculptDab(g: BufferGeometry, brush: Exclude<SculptBrush, 'arrastrar'>, dab: Dab): number {
+/** Aplica una pincelada de esculpir. Devuelve cuántos vértices tocó. */
+export function sculptDab(g: BufferGeometry, brush: DabBrush, dab: Dab, ctx?: StrokeContext): number {
+  if (brush === 'mascara') return maskDab(g, dab)
   const pos = g.attributes.position
   const nor = g.attributes.normal
-  const hits = dabWeights(g, brush === 'cortar' ? { ...dab, tip: dab.tip === 'suave' ? 'dura' : dab.tip } : dab)
+  const shape = brush === 'cortar' && dab.tip === 'suave' ? { ...dab, tip: 'dura' as const } : dab
+  const hits = shapeWeights(g, shape, { mask: true })
   if (hits.length === 0) return 0
-  const k = dab.strength * dab.radius * 0.25
+  const sign = dab.invert ? -1 : 1
+  const k = dab.strength * dab.radius * 0.25 * sign
   const n = dab.normal
 
   if (brush === 'suavizar') {
@@ -92,12 +58,28 @@ export function sculptDab(g: BufferGeometry, brush: Exclude<SculptBrush, 'arrast
     return hits.length
   }
 
-  let plane: Vector3 | null = null
-  if (brush === 'aplanar') {
-    plane = new Vector3()
+  if (brush === 'capa') {
+    if (!ctx) return 0
+    // Sube (o baja con Alt) hasta una altura fija respecto de cómo estaba al empezar el trazo: queda una "capa" pareja.
+    const height = dab.radius * 0.35 * dab.strength * sign
+    for (const { index: i, w } of hits) {
+      const target = height
+      const cur = ctx.layer[i]
+      const next = Math.abs(target) > Math.abs(cur) ? cur + (target - cur) * Math.min(1, w * 0.6) : cur
+      ctx.layer[i] = next
+      const j = i * 3
+      pos.setXYZ(i, ctx.orig[j] + ctx.origNormal[j] * next, ctx.orig[j + 1] + ctx.origNormal[j + 1] * next, ctx.orig[j + 2] + ctx.origNormal[j + 2] * next)
+    }
+    return hits.length
+  }
+
+  // Plano promedio debajo del pincel (aplanar y arcilla).
+  const plane = new Vector3()
+  if (brush === 'aplanar' || brush === 'arcilla') {
     let sw = 0
     for (const { index, w } of hits) { plane.x += pos.getX(index) * w; plane.y += pos.getY(index) * w; plane.z += pos.getZ(index) * w; sw += w }
     plane.divideScalar(sw)
+    if (brush === 'arcilla') plane.addScaledVector(n, Math.abs(k) * 0.6 * sign)
   }
 
   for (const { index: i, w } of hits) {
@@ -108,16 +90,24 @@ export function sculptDab(g: BufferGeometry, brush: Exclude<SculptBrush, 'arrast
       case 'cortar': x -= n.x * k * w * 2.5; y -= n.y * k * w * 2.5; z -= n.z * k * w * 2.5; break
       case 'inflar': x += nor.getX(i) * k * w; y += nor.getY(i) * k * w; z += nor.getZ(i) * k * w; break
       case 'aplanar': {
-        const d = (x - plane!.x) * n.x + (y - plane!.y) * n.y + (z - plane!.z) * n.z
+        const d = (x - plane.x) * n.x + (y - plane.y) * n.y + (z - plane.z) * n.z
         const t = d * w * dab.strength * 0.6
         x -= n.x * t; y -= n.y * t; z -= n.z * t
         break
       }
-      case 'pellizcar': {
+      case 'arcilla': {
+        // Rellena hasta el plano (que está un poco arriba): tiras de arcilla planas.
+        const d = (plane.x - x) * n.x + (plane.y - y) * n.y + (plane.z - z) * n.z
+        if (sign > 0 ? d > 0 : d < 0) { const t = d * w * dab.strength * 0.7; x += n.x * t; y += n.y * t; z += n.z * t }
+        break
+      }
+      case 'pellizcar':
+      case 'pliegue': {
         const dx = dab.center.x - x, dy = dab.center.y - y, dz = dab.center.z - z
         const h = dx * n.x + dy * n.y + dz * n.z
-        const t = w * dab.strength * 0.18
+        const t = w * dab.strength * (brush === 'pliegue' ? 0.3 : 0.18)
         x += (dx - n.x * h) * t; y += (dy - n.y * h) * t; z += (dz - n.z * h) * t
+        if (brush === 'pliegue') { x -= n.x * k * w * 0.8; y -= n.y * k * w * 0.8; z -= n.z * k * w * 0.8 }
         break
       }
     }
@@ -126,14 +116,37 @@ export function sculptDab(g: BufferGeometry, brush: Exclude<SculptBrush, 'arrast
   return hits.length
 }
 
+/** Máscara: protege zonas (los demás pinceles no las tocan). Alt borra. */
+function maskDab(g: BufferGeometry, dab: Dab): number {
+  ensureMask(g)
+  const mask = g.attributes.mask
+  const hits = shapeWeights(g, dab)
+  for (const { index, w } of hits) {
+    const v = mask.getX(index) + (dab.invert ? -1 : 1) * w * Math.max(0.2, dab.strength)
+    mask.setX(index, Math.min(1, Math.max(0, v)))
+  }
+  return hits.length
+}
+
+export function invertMask(g: BufferGeometry): void {
+  ensureMask(g)
+  const m = g.attributes.mask
+  for (let i = 0; i < m.count; i++) m.setX(i, 1 - m.getX(i))
+}
+
+export function clearMask(g: BufferGeometry): void {
+  ensureMask(g)
+  ;(g.attributes.mask.array as Float32Array).fill(0)
+}
+
 /** Arrastrar: se toman los pesos al empezar y se mueve todo junto. */
 export interface Grab {
   hits: { index: number; w: number; x: number; y: number; z: number }[]
 }
 
-export function startGrab(g: BufferGeometry, dab: Dab): Grab {
+export function startGrab(g: BufferGeometry, shape: BrushShape): Grab {
   const pos = g.attributes.position
-  return { hits: dabWeights(g, dab).map(({ index, w }) => ({ index, w, x: pos.getX(index), y: pos.getY(index), z: pos.getZ(index) })) }
+  return { hits: shapeWeights(g, shape, { mask: true }).map(({ index, w }) => ({ index, w, x: pos.getX(index), y: pos.getY(index), z: pos.getZ(index) })) }
 }
 
 export function moveGrab(g: BufferGeometry, grab: Grab, delta: Vector3): void {
@@ -141,13 +154,11 @@ export function moveGrab(g: BufferGeometry, grab: Grab, delta: Vector3): void {
   for (const h of grab.hits) pos.setXYZ(h.index, h.x + delta.x * h.w, h.y + delta.y * h.w, h.z + delta.z * h.w)
 }
 
-/** La misma pincelada del otro lado (espejo en X local). */
-export function mirrorDab(dab: Dab): Dab | null {
-  if (Math.abs(dab.center.x) < dab.radius * 0.35) return null
-  return {
-    ...dab,
-    center: new Vector3(-dab.center.x, dab.center.y, dab.center.z),
-    normal: new Vector3(-dab.normal.x, dab.normal.y, dab.normal.z),
-    angle: 180 - dab.angle,
+/** Gancho: arrastra lo que está bajo el pincel en cada paso (estira como una serpiente). */
+export function snakeDab(g: BufferGeometry, shape: BrushShape, delta: Vector3, strength: number): void {
+  const pos = g.attributes.position
+  for (const { index: i, w } of shapeWeights(g, shape, { mask: true })) {
+    const t = w * Math.max(0.3, strength)
+    pos.setXYZ(i, pos.getX(i) + delta.x * t, pos.getY(i) + delta.y * t, pos.getZ(i) + delta.z * t)
   }
 }

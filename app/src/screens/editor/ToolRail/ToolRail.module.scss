@@ -4,7 +4,7 @@
 }
 .label { padding: 0 4px 4px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .tool {
-  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px;
   border: 0; border-radius: var(--radius-m); background: transparent; font-size: 12px; cursor: pointer;
   &:hover { background: var(--hover); }
 }

@@ -1,6 +1,8 @@
 import type { BufferGeometry } from 'three'
-import type { SculptBrush, Tip } from '@/domain/sculpt/brushes'
-import type { PaintTool } from '@/domain/paint/paint'
+import type { SculptBrush } from '@/domain/sculpt/brushes'
+import type { BlendMode, PaintTool } from '@/domain/paint/paint'
+import type { Tip } from '@/shared/lib/brushShape'
+import { NO_SYMMETRY, type Symmetry } from '@/shared/lib/symmetry'
 
 export type Mode = 'modelar' | 'esculpir' | 'pintar'
 export type Tool = 'elegir' | 'mover' | 'girar' | 'escalar'
@@ -12,19 +14,32 @@ export interface SculptSettings {
   size: number
   strength: number
   angle: number
-  mirror: boolean
+  symmetry: Symmetry
 }
 
 export interface PaintSettings {
   tool: PaintTool
   color: string
+  /** Segundo color (degradado). */
+  color2: string
+  tip: Tip
+  angle: number
   size: number
   softness: number
-  mirror: boolean
+  strength: number
+  blend: BlendMode
+  symmetry: Symmetry
+  /** Plantilla: imagen (data URL) que se pinta a través del pincel. */
+  stencil: string | null
 }
 
-export const DEFAULT_SCULPT: SculptSettings = { brush: 'sumar', tip: 'suave', size: 0.15, strength: 0.5, angle: 0, mirror: true }
-export const DEFAULT_PAINT: PaintSettings = { tool: 'pincel', color: '#4a72b8', size: 0.08, softness: 0.4, mirror: false }
+export const DEFAULT_SCULPT: SculptSettings = {
+  brush: 'sumar', tip: 'suave', size: 0.15, strength: 0.5, angle: 0, symmetry: { ...NO_SYMMETRY, x: true },
+}
+export const DEFAULT_PAINT: PaintSettings = {
+  tool: 'pincel', color: '#4a72b8', color2: '#ffffff', tip: 'suave', angle: 0, size: 0.08, softness: 0.4, strength: 0.8,
+  blend: 'mezclar', symmetry: NO_SYMMETRY, stencil: null,
+}
 
 /** Lo que la vista 3D le pide al editor para editar mallas (así el historial queda en un solo lugar). */
 export interface EditHooks {

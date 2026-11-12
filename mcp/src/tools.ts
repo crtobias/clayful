@@ -9,7 +9,9 @@ const PRESETS = ['arcilla', 'tela', 'vidrio', 'metal', 'madera', 'plastico'] as 
 const FABRICS = ['algodon', 'jean', 'lana', 'seda', 'cuero'] as const
 const SHAPES = ['cubo', 'esfera', 'cilindro', 'cono', 'dona', 'plano'] as const
 const VIEWS = ['actual', 'frente', 'atras', 'izquierda', 'derecha', 'arriba', 'perspectiva'] as const
-const BRUSHES = ['sumar', 'quitar', 'aplanar', 'suavizar', 'inflar', 'pellizcar', 'arrastrar', 'cortar'] as const
+const BRUSHES = ['sumar', 'quitar', 'arcilla', 'capa', 'aplanar', 'suavizar', 'inflar', 'pellizcar', 'pliegue', 'arrastrar', 'gancho', 'cortar', 'mascara'] as const
+const PAINT_TOOLS = ['pincel', 'aerografo', 'difuminar', 'suavizar'] as const
+const BLENDS = ['mezclar', 'multiplicar', 'aclarar', 'oscurecer', 'sumar'] as const
 const TIPS = ['suave', 'dura', 'cuadrada', 'triangulo', 'linea'] as const
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()])
@@ -45,7 +47,10 @@ export function registerTools(server: McpServer, bridge: AppBridge) {
     shapes: SHAPES,
     amount: { vidrio: 'transparencia', metal: 'brillo', plastico: 'brillo', arcilla: 'brillo' },
     sculptBrushes: BRUSHES,
+    paintTools: PAINT_TOOLS,
+    blends: BLENDS,
     tips: TIPS,
+    symmetry: 'symmetry: { x, y, z: espejo por eje, radial: copias alrededor de axis (x|y|z) }. Ejes de la parte, centrados en su origen.',
     note: 'La ropa no es un modo aparte: es una parte con material tela. Esculpir y pintar trabajan en coordenadas de mundo (metros, Y arriba).',
   }))
 
@@ -81,6 +86,14 @@ export function registerTools(server: McpServer, bridge: AppBridge) {
   server.registerTool('redo', { title: 'Rehacer', description: 'Rehace lo deshecho.', inputSchema: {} }, relay('redo'))
 
   const pts = z.array(vec3).min(1).describe('Puntos [x,y,z] en el mundo, sobre o cerca de la superficie de la parte. Varios = un trazo.')
+  const symmetry = z.object({
+    x: z.boolean().optional(),
+    y: z.boolean().optional(),
+    z: z.boolean().optional(),
+    radial: z.number().int().min(1).max(16).optional().describe('Copias alrededor del eje (1 = no).'),
+    axis: z.enum(['x', 'y', 'z']).optional(),
+  }).optional().describe('Simetría en ejes de la parte: espejos combinables + radial.')
+  const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 
   server.registerTool('sculpt_stroke', {
     title: 'Esculpir',
@@ -93,29 +106,49 @@ export function registerTools(server: McpServer, bridge: AppBridge) {
       strength: z.number().min(0.01).max(1).optional().describe('Fuerza 0..1 (default 0.5).'),
       tip: z.enum(TIPS).optional(),
       angle: z.number().optional().describe('Giro de la punta en grados.'),
-      mirror: z.boolean().optional().describe('Repetir del otro lado (espejo en X de la parte).'),
-      move: vec3.optional().describe('Solo para arrastrar: cuánto mover [dx,dy,dz] en metros.'),
+      mirror: z.boolean().optional().describe('Atajo de symmetry.x.'),
+      symmetry,
+      invert: z.boolean().optional().describe('Al revés (como Alt): sumar↔quitar, borrar máscara, capa hacia abajo.'),
+      move: vec3.optional().describe('Para arrastrar y gancho: cuánto mover [dx,dy,dz] en metros.'),
     },
   }, relay('sculpt_stroke'))
 
   server.registerTool('paint_stroke', {
     title: 'Pintar',
-    description: 'Pinta la parte siguiendo los puntos (color por vértice). erase=true vuelve a blanco.',
+    description: 'Pinta la parte siguiendo los puntos (color por vértice). tool: pincel, aerografo (suave, acumula), difuminar (arrastra color), suavizar (mezcla bordes). erase=true vuelve a blanco.',
     inputSchema: {
       part,
       points: pts,
-      color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      tool: z.enum(PAINT_TOOLS).optional(),
+      color: color.optional(),
+      blend: z.enum(BLENDS).optional(),
+      tip: z.enum(TIPS).optional(),
+      angle: z.number().optional(),
       size: z.number().min(0.005).max(1).optional().describe('Radio en metros (default 0.08).'),
-      softness: z.number().min(0).max(1).optional().describe('Borde suave 0..1 (default 0.4).'),
+      strength: z.number().min(0.01).max(1).optional().describe('Opacidad por pasada (default 0.85).'),
+      softness: z.number().min(0).max(1).optional().describe('Borde suave 0..1 (punta suave, default 0.4).'),
       mirror: z.boolean().optional(),
+      symmetry,
       erase: z.boolean().optional(),
     },
   }, relay('paint_stroke'))
 
+  server.registerTool('paint_gradient', {
+    title: 'Degradado',
+    description: 'Pinta un degradado sobre toda la parte, de `from` (color) a `to` (color2), en coordenadas del mundo.',
+    inputSchema: { part, from: vec3, to: vec3, color, color2: color.optional(), blend: z.enum(BLENDS).optional(), strength: z.number().min(0).max(1).optional() },
+  }, relay('paint_gradient'))
+
+  server.registerTool('mask', {
+    title: 'Máscara',
+    description: 'Invierte o borra la máscara de esculpir de una parte (pintala con sculpt_stroke brush=mascara).',
+    inputSchema: { part, action: z.enum(['invertir', 'borrar']) },
+  }, relay('mask'))
+
   server.registerTool('fill_color', {
     title: 'Pintar toda la parte',
     description: 'Balde: pinta toda la parte de un color.',
-    inputSchema: { part, color: z.string().regex(/^#[0-9a-fA-F]{6}$/) },
+    inputSchema: { part, color },
   }, relay('fill_color'))
 
   server.registerTool('add_detail', {

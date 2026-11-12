@@ -11,10 +11,10 @@
 .title { margin: 0; font-size: 16px; font-weight: 600; }
 .value { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .range { width: 100%; accent-color: var(--accent); }
-.tips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.tips { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .card {
-  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 2px;
-  border: 1px solid var(--border); border-radius: var(--radius-m); background: var(--surface); font-size: 12px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0;
+  border: 1px solid var(--border); border-radius: var(--radius-m); background: var(--surface); font-size: 11px; cursor: pointer;
   &:hover { border-color: #b9bec8; }
 }
 .active { border: 2px solid var(--accent); background: var(--accent-softer); font-weight: 600; }
@@ -42,3 +42,19 @@
   border: 1px dashed #b9bec8; color: var(--text-2); cursor: pointer;
   input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  min-width: 40px; height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); font-weight: 500; cursor: pointer;
+  &:hover { border-color: #b9bec8; }
+}
+.label { font-size: 13px; color: var(--text-2); }
+.buttons { display: flex; gap: 8px; .button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; } }
+.colorWell { position: relative; display: inline-flex; cursor: pointer; input { position: absolute; inset: 0; opacity: 0; cursor: pointer; } }
+.small { width: 28px; height: 28px; }
+.iconButton {
+  width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: var(--radius-s);
+  background: transparent; color: var(--text-2); cursor: pointer;
+  &:hover { background: var(--hover); }
+}
+.chip.active { border: 2px solid var(--accent); background: var(--accent-softer); color: var(--accent-text); font-weight: 600; }
