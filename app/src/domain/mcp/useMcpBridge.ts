@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
-export const MCP_URL = 'ws://127.0.0.1:47321'
+/** Puerto del MCP. Se puede cambiar con ?mcp=47322 (útil para tener dos Clayful o probar). */
+const port = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('mcp') ?? '47321' : '47321'
+export const MCP_URL = `ws://127.0.0.1:${/^\d+$/.test(port) ? port : '47321'}`
 const RETRY_MS = 2500
 
 /** Lo que manda el servidor MCP: una herramienta para ejecutar. */

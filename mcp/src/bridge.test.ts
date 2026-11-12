@@ -18,6 +18,7 @@ function connectApp(origin: string): Promise<WebSocket> {
 describe('AppBridge', () => {
   it('manda la herramienta a la app y devuelve su respuesta', async () => {
     bridge = new AppBridge(PORT)
+    await bridge.ready
     const app = await connectApp('tauri://localhost')
     app.on('message', (raw) => {
       const msg = JSON.parse(raw.toString())
@@ -29,14 +30,33 @@ describe('AppBridge', () => {
 
   it('propaga los errores de la app', async () => {
     bridge = new AppBridge(PORT)
+    await bridge.ready
     const app = await connectApp('http://tauri.localhost')
     app.on('message', (raw) => app.send(JSON.stringify({ id: JSON.parse(raw.toString()).id, ok: false, error: 'No encontré "Pelota"' })))
     await expect(bridge.call('set_material', { part: 'Pelota' })).rejects.toThrow('Pelota')
     app.close()
   })
 
+  it('si el puerto está ocupado, espera y lo toma cuando se libera', async () => {
+    const first = new AppBridge(PORT)
+    await first.ready
+    bridge = new AppBridge(PORT)
+    await new Promise((r) => setTimeout(r, 200)) // el aviso de puerto ocupado llega asincrónico
+    try {
+      await expect(bridge.call('scene_info')).rejects.toThrow('Otra sesión')
+    } finally {
+      await first.close()
+    }
+    await bridge.ready
+    const app = await connectApp('tauri://localhost')
+    app.on('message', (raw) => app.send(JSON.stringify({ id: JSON.parse(raw.toString()).id, ok: true, result: 'ok' })))
+    await expect(bridge.call('scene_info')).resolves.toBe('ok')
+    app.close()
+  })
+
   it('rechaza conexiones de otras páginas web', async () => {
     bridge = new AppBridge(PORT)
+    await bridge.ready
     await expect(connectApp('https://evil.example')).rejects.toThrow()
   })
 

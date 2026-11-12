@@ -1,12 +1,19 @@
 import { Icon, type IconName } from '@/assets/icons/Icon'
 import type { Shape } from '@/domain/scene/model'
+import { SCULPT_BRUSHES, type SculptBrush } from '@/domain/sculpt/brushes'
+import { PAINT_TOOLS, type PaintTool } from '@/domain/paint/paint'
 import { t } from '@/shared/i18n/es'
-import type { Tool } from '../types'
+import type { Mode, Tool } from '../types'
 import styles from './ToolRail.module.scss'
 
 interface Props {
+  mode: Mode
   tool: Tool
+  brush: SculptBrush
+  paintTool: PaintTool
   onTool: (tool: Tool) => void
+  onBrush: (brush: SculptBrush) => void
+  onPaintTool: (tool: PaintTool) => void
   onAddShape: (shape: Shape) => void
   onOpen: () => void
 }
@@ -27,7 +34,31 @@ const TOOL_BUTTONS: { tool: Tool; icon: IconName; key: string }[] = [
   { tool: 'escalar', icon: 'scale', key: 'R' },
 ]
 
-export function ToolRail({ tool, onTool, onAddShape, onOpen }: Props) {
+export function ToolRail({ mode, tool, brush, paintTool, onTool, onBrush, onPaintTool, onAddShape, onOpen }: Props) {
+  if (mode === 'esculpir') {
+    return (
+      <nav className={styles.rail} aria-label="Pinceles">
+        <span className={styles.label}>{t.brush}</span>
+        {SCULPT_BRUSHES.map((b) => (
+          <button key={b} type="button" className={`${styles.tool} ${brush === b ? styles.active : ''}`} aria-pressed={brush === b} title={t.brushHelp[b]} onClick={() => onBrush(b)}>
+            <Icon name={b} size={24} />{t.brushes[b]}
+          </button>
+        ))}
+      </nav>
+    )
+  }
+  if (mode === 'pintar') {
+    return (
+      <nav className={styles.rail} aria-label="Pintar">
+        <span className={styles.label}>{t.modes.pintar}</span>
+        {PAINT_TOOLS.map((p) => (
+          <button key={p} type="button" className={`${styles.tool} ${paintTool === p ? styles.active : ''}`} aria-pressed={paintTool === p} title={t.paintHelp[p]} onClick={() => onPaintTool(p)}>
+            <Icon name={p} size={24} />{t.paintTools[p]}
+          </button>
+        ))}
+      </nav>
+    )
+  }
   return (
     <nav className={styles.rail} aria-label="Herramientas">
       <span className={styles.label}>{t.add}</span>

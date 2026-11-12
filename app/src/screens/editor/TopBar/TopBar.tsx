@@ -1,8 +1,11 @@
 import { Icon, type IconName } from '@/assets/icons/Icon'
 import { t } from '@/shared/i18n/es'
+import type { Mode } from '../types'
 import styles from './TopBar.module.scss'
 
 interface Props {
+  mode: Mode
+  onMode: (mode: Mode) => void
   connected: boolean
   canUndo: boolean
   canRedo: boolean
@@ -11,13 +14,13 @@ interface Props {
   onExport: () => void
 }
 
-const MODES: { id: keyof typeof t.modes; icon: IconName; ready: boolean }[] = [
-  { id: 'modelar', icon: 'cube', ready: true },
-  { id: 'esculpir', icon: 'hand', ready: false },
-  { id: 'pintar', icon: 'brush', ready: false },
+const MODES: { id: Mode; icon: IconName; key: string }[] = [
+  { id: 'modelar', icon: 'cube', key: '1' },
+  { id: 'esculpir', icon: 'hand', key: '2' },
+  { id: 'pintar', icon: 'brush', key: '3' },
 ]
 
-export function TopBar({ connected, canUndo, canRedo, onUndo, onRedo, onExport }: Props) {
+export function TopBar({ mode, onMode, connected, canUndo, canRedo, onUndo, onRedo, onExport }: Props) {
   return (
     <header className={styles.bar}>
       <div className={styles.brand}>
@@ -31,7 +34,7 @@ export function TopBar({ connected, canUndo, canRedo, onUndo, onRedo, onExport }
 
       <nav className={styles.tabs} aria-label="Modo">
         {MODES.map((m) => (
-          <button key={m.id} type="button" className={`${styles.tab} ${m.ready ? styles.current : ''}`} aria-current={m.ready ? 'page' : undefined} disabled={!m.ready} title={m.ready ? undefined : t.soon}>
+          <button key={m.id} type="button" className={`${styles.tab} ${mode === m.id ? styles.current : ''}`} aria-current={mode === m.id ? 'page' : undefined} title={`${t.modes[m.id]} (${m.key})`} onClick={() => onMode(m.id)}>
             <Icon name={m.icon} />
             {t.modes[m.id]}
           </button>

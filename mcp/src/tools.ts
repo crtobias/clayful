@@ -9,6 +9,8 @@ const PRESETS = ['arcilla', 'tela', 'vidrio', 'metal', 'madera', 'plastico'] as 
 const FABRICS = ['algodon', 'jean', 'lana', 'seda', 'cuero'] as const
 const SHAPES = ['cubo', 'esfera', 'cilindro', 'cono', 'dona', 'plano'] as const
 const VIEWS = ['actual', 'frente', 'atras', 'izquierda', 'derecha', 'arriba', 'perspectiva'] as const
+const BRUSHES = ['sumar', 'quitar', 'aplanar', 'suavizar', 'inflar', 'pellizcar', 'arrastrar', 'cortar'] as const
+const TIPS = ['suave', 'dura', 'cuadrada', 'triangulo', 'linea'] as const
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()])
 const part = z.string().describe('Id o nombre de la parte (ver scene_info).')
@@ -42,7 +44,9 @@ export function registerTools(server: McpServer, bridge: AppBridge) {
     fabrics: FABRICS,
     shapes: SHAPES,
     amount: { vidrio: 'transparencia', metal: 'brillo', plastico: 'brillo', arcilla: 'brillo' },
-    note: 'La ropa no es un modo aparte: es una parte con material tela.',
+    sculptBrushes: BRUSHES,
+    tips: TIPS,
+    note: 'La ropa no es un modo aparte: es una parte con material tela. Esculpir y pintar trabajan en coordenadas de mundo (metros, Y arriba).',
   }))
 
   server.registerTool('add_shape', {
@@ -75,6 +79,50 @@ export function registerTools(server: McpServer, bridge: AppBridge) {
   server.registerTool('clear', { title: 'Vaciar escena', description: 'Borra todo (se puede deshacer).', inputSchema: {} }, relay('clear'))
   server.registerTool('undo', { title: 'Deshacer', description: 'Deshace el último cambio.', inputSchema: {} }, relay('undo'))
   server.registerTool('redo', { title: 'Rehacer', description: 'Rehace lo deshecho.', inputSchema: {} }, relay('redo'))
+
+  const pts = z.array(vec3).min(1).describe('Puntos [x,y,z] en el mundo, sobre o cerca de la superficie de la parte. Varios = un trazo.')
+
+  server.registerTool('sculpt_stroke', {
+    title: 'Esculpir',
+    description: 'Pasa un pincel de esculpir por la parte siguiendo los puntos. Cada punto se pega a la superficie más cercana. Mirá antes con scene_info/look para saber dónde está la parte.',
+    inputSchema: {
+      part,
+      brush: z.enum(BRUSHES),
+      points: pts,
+      size: z.number().min(0.01).max(1).optional().describe('Radio del pincel en metros (default 0.15).'),
+      strength: z.number().min(0.01).max(1).optional().describe('Fuerza 0..1 (default 0.5).'),
+      tip: z.enum(TIPS).optional(),
+      angle: z.number().optional().describe('Giro de la punta en grados.'),
+      mirror: z.boolean().optional().describe('Repetir del otro lado (espejo en X de la parte).'),
+      move: vec3.optional().describe('Solo para arrastrar: cuánto mover [dx,dy,dz] en metros.'),
+    },
+  }, relay('sculpt_stroke'))
+
+  server.registerTool('paint_stroke', {
+    title: 'Pintar',
+    description: 'Pinta la parte siguiendo los puntos (color por vértice). erase=true vuelve a blanco.',
+    inputSchema: {
+      part,
+      points: pts,
+      color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      size: z.number().min(0.005).max(1).optional().describe('Radio en metros (default 0.08).'),
+      softness: z.number().min(0).max(1).optional().describe('Borde suave 0..1 (default 0.4).'),
+      mirror: z.boolean().optional(),
+      erase: z.boolean().optional(),
+    },
+  }, relay('paint_stroke'))
+
+  server.registerTool('fill_color', {
+    title: 'Pintar toda la parte',
+    description: 'Balde: pinta toda la parte de un color.',
+    inputSchema: { part, color: z.string().regex(/^#[0-9a-fA-F]{6}$/) },
+  }, relay('fill_color'))
+
+  server.registerTool('add_detail', {
+    title: 'Más detalle',
+    description: 'Subdivide la malla de la parte (curvas más finas para esculpir o pintar detalles chicos).',
+    inputSchema: { part },
+  }, relay('add_detail'))
 
   server.registerTool('look', {
     title: 'Mirar la escena',

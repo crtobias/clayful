@@ -7,7 +7,8 @@
 .tabs { display: flex; gap: 4px; padding: 4px; background: var(--hover); border-radius: var(--radius-m); }
 .tab {
   display: flex; align-items: center; gap: 8px; padding: 8px 16px; border: 0; border-radius: var(--radius-s);
-  background: transparent; color: var(--text-2); font-weight: 500;
+  background: transparent; color: var(--text-2); font-weight: 500; cursor: pointer;
+  &:hover { color: var(--text); }
 }
 .current { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgb(22 24 29 / 0.08); }
 .actions { display: flex; align-items: center; gap: 8px; }

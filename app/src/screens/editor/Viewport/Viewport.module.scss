@@ -8,3 +8,4 @@
   padding: 16px 20px; border-radius: var(--radius-m); background: rgb(255 255 255 / 0.9);
   text-align: center; line-height: 1.5; color: var(--text-2); pointer-events: none;
 }
+.editing canvas { cursor: crosshair; }

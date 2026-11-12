@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useScene, newId } from '@/domain/scene/store'
-import { getOriginalMaterial } from '@/domain/scene/geometry'
+import { getGeometry, getOriginalMaterial } from '@/domain/scene/geometry'
 import { IMPORT_EXTENSIONS, importFile } from '@/domain/scene/importFile'
 import { exportGlb } from '@/domain/scene/exportGlb'
-import { describeScene, toolToCommand } from '@/domain/scene/tools'
+import { beginEdit } from '@/domain/scene/editable'
+import { describeScene, resolvePart, toolToCommand } from '@/domain/scene/tools'
 import type { Part, Shape, Vec3 } from '@/domain/scene/model'
 import { buildMaterial } from '@/domain/materials/buildMaterial'
+import { fillColor } from '@/domain/paint/paint'
 import { useMcpBridge, type ToolHandler } from '@/domain/mcp/useMcpBridge'
 import type { MaterialSpec } from '@/shared/config/materials'
+import { refresh } from '@/shared/lib/meshOps'
 import { convertBlend, isDesktop, saveBytes } from '@/shared/lib/desktop'
 import { base64ToBuffer, bufferToBase64 } from '@/shared/utils/base64'
 import { t } from '@/shared/i18n/es'
@@ -15,27 +18,56 @@ import { TopBar } from './TopBar/TopBar'
 import { ToolRail } from './ToolRail/ToolRail'
 import { Viewport } from './Viewport/Viewport'
 import { PartsPanel } from './PartsPanel/PartsPanel'
+import { SculptPanel } from './EditPanels/SculptPanel'
+import { PaintPanel } from './EditPanels/PaintPanel'
 import { Toast, type ToastMessage } from './Toast/Toast'
 import { claudeToast } from './claudeToast'
-import { LOOK_VIEWS, type CaptureFn, type LookView, type Tool } from './types'
+import { fillFromTool, paintFromTool, sculptFromTool } from './mcpEdit'
+import {
+  DEFAULT_PAINT, DEFAULT_SCULPT, LOOK_VIEWS,
+  type CaptureFn, type EditHooks, type LookView, type Mode, type PaintSettings, type SculptSettings, type Tool,
+} from './types'
 import styles from './Editor.module.scss'
 
-const materialFor = (part: Part) => buildMaterial(part.material, getOriginalMaterial(part.geometryId))
+const materialFor = (part: Part) =>
+  buildMaterial(part.material, getOriginalMaterial(part.geometryId), Boolean(getGeometry(part.geometryId)?.hasAttribute('color')))
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-/** Pantalla Modelar. Orquesta escena, materiales y el puente con Claude: todo pasa por los mismos comandos. */
+/**
+ * Prepara una versión editable de la parte y la deja en la escena con un solo paso de deshacer.
+ * La usan los trazos con el mouse y las herramientas del MCP.
+ */
+function startEdit(partId: string, forPaint: boolean, moreDetail = false) {
+  const s = useScene.getState()
+  const part = s.parts.find((p) => p.id === partId)
+  if (!part || part.image) return null
+  const res = beginEdit(part, forPaint, moreDetail)
+  s.checkpoint()
+  s.run({ type: 'set_geometry', id: partId, geometryId: res.geometryId }, { record: false })
+  if (res.material) s.run({ type: 'set_material', id: partId, material: res.material }, { record: false })
+  return res.geometry
+}
+
+/** Pantalla principal. Orquesta escena, materiales, esculpir, pintar y el puente con Claude. */
 export function Editor() {
   const parts = useScene((s) => s.parts)
   const selectedId = useScene((s) => s.selectedId)
   const canUndo = useScene((s) => s.past.length > 0)
   const canRedo = useScene((s) => s.future.length > 0)
+  const [mode, setMode] = useState<Mode>('modelar')
   const [tool, setTool] = useState<Tool>('mover')
+  const [sculpt, setSculpt] = useState<SculptSettings>(DEFAULT_SCULPT)
+  const [paint, setPaint] = useState<PaintSettings>(DEFAULT_PAINT)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [dragging, setDragging] = useState(false)
   const captureRef = useRef<CaptureFn | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const modeRef = useRef(mode)
+  const paintRef = useRef(paint)
+  useEffect(() => { modeRef.current = mode; paintRef.current = paint }, [mode, paint])
 
   const notify = useCallback((text: string, fromClaude = false) => setToast({ key: Date.now(), text, fromClaude }), [])
+  const selected = parts.find((p) => p.id === selectedId) ?? null
 
   const importBytes = useCallback(async (name: string, data: ArrayBuffer) => {
     const added = await importFile(name, data, { newId, convertBlend: isDesktop ? convertBlend : undefined })
@@ -64,6 +96,22 @@ export function Editor() {
     }
   }, [notify])
 
+  const hooks: EditHooks = useMemo(() => ({
+    onStrokeStart: (partId) => startEdit(partId, modeRef.current === 'pintar'),
+    onFill: (partId) => {
+      const g = startEdit(partId, true)
+      if (!g) return
+      fillColor(g, paintRef.current.color)
+      refresh(g, false, true)
+    },
+    onPick: (color) => setPaint((p) => ({ ...p, color, tool: 'pincel' })),
+  }), [])
+
+  const moreDetail = useCallback(() => {
+    const id = useScene.getState().selectedId
+    if (id && startEdit(id, false, true)) notify(t.moreDetail)
+  }, [notify])
+
   /** Lo que pide Claude por MCP. */
   const handleTool: ToolHandler = useCallback(async (name, args) => {
     const s = useScene.getState()
@@ -89,6 +137,21 @@ export function Editor() {
       }
       case 'export_glb':
         return { data: bufferToBase64(await exportGlb(s.parts, materialFor)) }
+      case 'sculpt_stroke':
+      case 'paint_stroke':
+      case 'fill_color':
+      case 'add_detail': {
+        const part = resolvePart(s.parts, args.part)
+        const g = startEdit(part.id, name === 'paint_stroke' || name === 'fill_color', name === 'add_detail')
+        if (!g) throw new Error('Esa parte no se puede editar.')
+        const fresh = useScene.getState().parts.find((p) => p.id === part.id)!
+        if (name === 'sculpt_stroke') sculptFromTool(g, fresh, args)
+        if (name === 'paint_stroke') paintFromTool(g, fresh, args)
+        if (name === 'fill_color') fillFromTool(g, args)
+        const verb = { sculpt_stroke: 'esculpió', paint_stroke: 'pintó', fill_color: 'pintó entera', add_detail: 'le dio más detalle a' }[name]
+        notify(`Claude ${verb} ${part.name}`, true)
+        return { part: part.name, vertices: g.attributes.position.count }
+      }
       default: {
         const res = s.run(toolToCommand(name, args, s.parts))
         const text = claudeToast(name, args, s.parts)
@@ -114,6 +177,16 @@ export function Editor() {
       if (mod && key === 'y') { e.preventDefault(); s.redo(); return }
       if (mod && key === 'd' && s.selectedId) { e.preventDefault(); s.run({ type: 'duplicate', id: s.selectedId }); return }
       if (mod) return
+      if (key === '1') { setMode('modelar'); return }
+      if (key === '2') { setMode('esculpir'); return }
+      if (key === '3') { setMode('pintar'); return }
+      if (key === '[' || key === ']') {
+        const k = key === ']' ? 1.15 : 1 / 1.15
+        if (modeRef.current === 'pintar') setPaint((p) => ({ ...p, size: Math.min(0.5, Math.max(0.01, p.size * k)) }))
+        else setSculpt((p) => ({ ...p, size: Math.min(0.6, Math.max(0.02, p.size * k)) }))
+        return
+      }
+      if (modeRef.current !== 'modelar') return
       if ((key === 'delete' || key === 'backspace') && s.selectedId) { s.run({ type: 'delete', id: s.selectedId }); return }
       if (key === 'escape') { s.run({ type: 'select', id: null }); return }
       const tools: Record<string, Tool> = { q: 'elegir', w: 'mover', e: 'girar', r: 'escalar' }
@@ -152,6 +225,8 @@ export function Editor() {
   return (
     <div className={styles.editor}>
       <TopBar
+        mode={mode}
+        onMode={setMode}
         connected={bridge === 'connected'}
         canUndo={canUndo}
         canRedo={canRedo}
@@ -161,8 +236,13 @@ export function Editor() {
       />
       <div className={styles.body}>
         <ToolRail
+          mode={mode}
           tool={tool}
+          brush={sculpt.brush}
+          paintTool={paint.tool}
           onTool={setTool}
+          onBrush={(brush) => setSculpt((p) => ({ ...p, brush }))}
+          onPaintTool={(paintTool) => setPaint((p) => ({ ...p, tool: paintTool }))}
           onAddShape={(shape: Shape) => useScene.getState().run({ type: 'add_shape', shape })}
           onOpen={() => fileInput.current?.click()}
         />
@@ -170,7 +250,11 @@ export function Editor() {
           <Viewport
             parts={parts}
             selectedId={selectedId}
+            mode={mode}
             tool={tool}
+            sculpt={sculpt}
+            paint={paint}
+            hooks={hooks}
             onSelect={select}
             onTransformStart={() => useScene.getState().checkpoint()}
             onTransformEnd={(id, tr: { position: Vec3; rotation: Vec3; scale: Vec3 }) =>
@@ -180,14 +264,22 @@ export function Editor() {
           <Toast message={toast} />
           {dragging && <div className={styles.drop}>{t.dropHere}</div>}
         </div>
-        <PartsPanel
-          parts={parts}
-          selectedId={selectedId}
-          onSelect={select}
-          onDuplicate={(id) => useScene.getState().run({ type: 'duplicate', id })}
-          onDelete={(id) => useScene.getState().run({ type: 'delete', id })}
-          onMaterial={(id, patch: Partial<MaterialSpec>) => useScene.getState().run({ type: 'set_material', id, material: patch })}
-        />
+        {mode === 'esculpir' && (
+          <SculptPanel partName={selected?.name ?? null} settings={sculpt} onChange={(patch) => setSculpt((p) => ({ ...p, ...patch }))} onMoreDetail={moreDetail} />
+        )}
+        {mode === 'pintar' && (
+          <PaintPanel partName={selected?.name ?? null} settings={paint} onChange={(patch) => setPaint((p) => ({ ...p, ...patch }))} />
+        )}
+        {mode === 'modelar' && (
+          <PartsPanel
+            parts={parts}
+            selectedId={selectedId}
+            onSelect={select}
+            onDuplicate={(id) => useScene.getState().run({ type: 'duplicate', id })}
+            onDelete={(id) => useScene.getState().run({ type: 'delete', id })}
+            onMaterial={(id, patch: Partial<MaterialSpec>) => useScene.getState().run({ type: 'set_material', id, material: patch })}
+          />
+        )}
       </div>
       <input
         ref={fileInput}

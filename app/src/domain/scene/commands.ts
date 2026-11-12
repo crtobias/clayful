@@ -62,6 +62,8 @@ export function applyCommand(state: SceneState, cmd: SceneCommand, newId: () => 
       if (cmd.scale) patch.scale = cmd.scale
       return { parts: replace(parts, cmd.id, patch), selectedId, created: [] }
     }
+    case 'set_geometry':
+      return { parts: replace(parts, cmd.id, { geometryId: cmd.geometryId }), selectedId, created: [] }
     case 'rename': {
       return { parts: replace(parts, cmd.id, { name: cmd.name.trim() || find(parts, cmd.id).name }), selectedId, created: [] }
     }

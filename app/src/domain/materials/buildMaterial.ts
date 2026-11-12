@@ -6,9 +6,9 @@ import { colorTexture, normalTexture } from './textures'
 const cache = new Map<string, Material>()
 
 /** Material de three.js para un spec. Se cachea: mismo spec, mismo material. */
-export function buildMaterial(spec: MaterialSpec, original?: Material): Material {
+export function buildMaterial(spec: MaterialSpec, original?: Material, vertexColors = false): Material {
   if (spec.preset === 'original' && original) return original
-  const key = JSON.stringify(spec)
+  const key = JSON.stringify(spec) + (vertexColors ? ':vc' : '')
   const hit = cache.get(key)
   if (hit) return hit
 
@@ -25,6 +25,7 @@ export function buildMaterial(spec: MaterialSpec, original?: Material): Material
     sheenColor: new Color(p.sheenColor ?? '#000000'),
     clearcoat: p.clearcoat ?? 0,
     clearcoatRoughness: p.clearcoatRoughness ?? 0,
+    vertexColors,
   })
   if (p.pattern === 'wood') {
     mat.map = colorTexture('wood', p.repeat ?? 1)

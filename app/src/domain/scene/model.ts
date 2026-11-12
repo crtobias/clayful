@@ -30,6 +30,7 @@ export type SceneCommand =
   | { type: 'select'; id: string | null }
   | { type: 'set_material'; id: string; material: Partial<MaterialSpec> }
   | { type: 'transform'; id: string; position?: Vec3; rotation?: Vec3; scale?: Vec3 }
+  | { type: 'set_geometry'; id: string; geometryId: string }
   | { type: 'rename'; id: string; name: string }
   | { type: 'duplicate'; id: string }
   | { type: 'delete'; id: string }
