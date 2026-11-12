@@ -1,0 +1,30 @@
+.bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 24px; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 8px; }
+.name { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+.tabs { display: flex; gap: 4px; padding: 4px; background: var(--hover); border-radius: var(--radius-m); }
+.tab {
+  display: flex; align-items: center; gap: 8px; padding: 8px 16px; border: 0; border-radius: var(--radius-s);
+  background: transparent; color: var(--text-2); font-weight: 500;
+}
+.current { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgb(22 24 29 / 0.08); }
+.actions { display: flex; align-items: center; gap: 8px; }
+.status {
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
+  background: var(--hover); color: var(--text-2); font-size: 13px; font-weight: 500;
+}
+.dot { width: 8px; height: 8px; border-radius: 999px; background: #9aa0aa; }
+.on { background: var(--success-soft); color: var(--success-text); .dot { background: var(--success); } }
+.icon {
+  width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: var(--radius-s);
+  background: transparent; cursor: pointer;
+  &:not(:disabled):hover { background: var(--hover); }
+}
+.export {
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-s); background: var(--surface);
+  font-weight: 600; cursor: pointer;
+  &:hover { background: var(--hover); }
+}

@@ -1,0 +1,9 @@
+.toast {
+  position: absolute; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 8px; max-width: 420px;
+  padding: 10px 14px; border-radius: var(--radius-m); background: var(--text); color: #fff; font-size: 13px;
+  box-shadow: 0 8px 24px rgb(22 24 29 / 0.2);
+  animation: enter 200ms var(--ease-out);
+}
+.dot { flex: none; width: 8px; height: 8px; border-radius: 999px; background: #4ade80; }
+@keyframes enter { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation-duration: 1ms; } }

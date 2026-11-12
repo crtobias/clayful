@@ -1,0 +1,10 @@
+.viewport { position: relative; flex: 1 1 560px; min-width: 0; min-height: 0; background: var(--viewport); }
+.hint {
+  position: absolute; left: 16px; bottom: 16px; margin: 0; padding: 8px 12px; border-radius: var(--radius-s);
+  background: rgb(255 255 255 / 0.85); color: var(--text-2); font-size: 12px; pointer-events: none;
+}
+.empty {
+  position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); margin: 0; max-width: 320px;
+  padding: 16px 20px; border-radius: var(--radius-m); background: rgb(255 255 255 / 0.9);
+  text-align: center; line-height: 1.5; color: var(--text-2); pointer-events: none;
+}

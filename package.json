@@ -1,0 +1,15 @@
+{
+  "name": "clayful",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Modelador 3D súper fácil, manejable por MCP",
+  "license": "MIT",
+  "workspaces": ["app", "mcp"],
+  "scripts": {
+    "dev": "npm run build -w mcp && npm run tauri dev -w app",
+    "build": "npm run build -w mcp && npm run tauri build -w app",
+    "test": "npm test -ws",
+    "typecheck": "npm run typecheck -ws",
+    "lint": "npm run lint -w app"
+  }
+}

@@ -1,0 +1,18 @@
+[package]
+name = "clayful"
+version = "0.1.0"
+description = "Modelador 3D súper fácil, manejable por MCP"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "clayful_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+urlencoding = "2"

@@ -1,0 +1,59 @@
+.panel { display: flex; flex-direction: column; gap: 24px; }
+.section { display: flex; flex-direction: column; gap: 12px; }
+.heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.title { margin: 0; font-size: 16px; font-weight: 600; }
+.note, .value { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.card {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 12px 4px; border: 1px solid var(--border); border-radius: var(--radius-m);
+  background: var(--surface); font-size: 13px; cursor: pointer;
+  transition: border-color 150ms var(--ease-out);
+  &:hover { border-color: #b9bec8; }
+}
+.active { border: 2px solid var(--accent); background: var(--accent-softer); font-weight: 600; }
+.check {
+  position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; display: grid; place-items: center;
+  border-radius: 999px; background: var(--accent); color: #fff;
+}
+
+.ball { width: 44px; height: 44px; border-radius: 999px; }
+.original { background: conic-gradient(from 45deg, #e5484d, #f7d046, #5bbf7a, #4a72b8, #8b7cf6, #e5484d); }
+.arcilla { background: radial-gradient(circle at 35% 30%, #f4c3ac, #c97b5e 60%, #8e4e3a); }
+.tela {
+  background:
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.16) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(-45deg, rgb(0 0 0 / 0.08) 0 2px, transparent 2px 4px),
+    radial-gradient(circle at 35% 30%, #f58a8e, #e5484d 60%, #a8262b);
+}
+.vidrio {
+  background: radial-gradient(circle at 32% 26%, #fff 0 8%, rgb(225 242 255 / 0.7) 10%, rgb(170 210 238 / 0.45) 50%, rgb(96 146 186 / 0.8));
+  box-shadow: inset 0 0 0 1px rgb(96 146 186 / 0.4);
+}
+.metal { background: radial-gradient(circle at 35% 30%, #fff, #c9cdd3 30%, #7c828c 70%, #3e434a); }
+.madera { background: repeating-radial-gradient(ellipse at 20% 50%, #cc9655 0 3px, #a9733a 3px 6px); }
+.plastico { background: radial-gradient(circle at 35% 30%, #fff 0 6%, #8be0b3 12%, #2f9e68 70%, #1d6b45); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  height: 36px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); cursor: pointer;
+  &:hover { border-color: #b9bec8; }
+}
+
+.range { width: 100%; accent-color: var(--accent); }
+
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch {
+  width: 32px; height: 32px; border-radius: 999px; border: 1px solid var(--border); cursor: pointer;
+  transition: transform 120ms var(--ease-out);
+  &:hover { transform: scale(1.08); }
+}
+.swatchActive { border: 2px solid #fff; box-shadow: 0 0 0 2px var(--text); }
+.custom {
+  position: relative; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 999px;
+  border: 1px dashed #b9bec8; color: var(--text-2); cursor: pointer;
+  input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  &:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+}

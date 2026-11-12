@@ -1,0 +1,37 @@
+import type { FabricType, MaterialPreset } from '@/shared/config/materials'
+
+/** Textos de la interfaz. Inglés: sumar en.ts con la misma forma. */
+export const t = {
+  modes: { modelar: 'Modelar', esculpir: 'Esculpir', pintar: 'Pintar' },
+  soon: 'Pronto',
+  mcpOn: 'Claude conectado',
+  mcpOff: 'Claude sin conectar',
+  undo: 'Deshacer',
+  redo: 'Rehacer',
+  exportGlb: 'Exportar GLB',
+  add: 'Agregar',
+  edit: 'Editar',
+  open: 'Abrir',
+  shapes: { cubo: 'Cubo', esfera: 'Esfera', cilindro: 'Cilindro', cono: 'Cono', dona: 'Dona', plano: 'Plano' },
+  tools: { elegir: 'Elegir', mover: 'Mover', girar: 'Girar', escalar: 'Escalar' },
+  parts: 'Partes',
+  noParts: 'Todavía no hay nada. Agregá una forma o arrastrá un archivo.',
+  pickPart: 'Tocá una parte para cambiarle el material.',
+  materialOf: (name: string) => `Material de ${name}`,
+  oneClick: 'Un clic',
+  fabricType: 'Tipo de tela',
+  color: 'Color',
+  otherColor: 'Otro color',
+  duplicate: 'Duplicar',
+  delete: 'Borrar',
+  hint: 'Arrastrá para girar · Rueda para acercar · Soltá archivos acá',
+  dropHere: 'Soltá para agregar a la escena',
+  presets: {
+    arcilla: 'Arcilla', tela: 'Tela', vidrio: 'Vidrio', metal: 'Metal', madera: 'Madera', plastico: 'Plástico', original: 'Original',
+  } satisfies Record<MaterialPreset, string>,
+  fabrics: { algodon: 'Algodón', jean: 'Jean', lana: 'Lana', seda: 'Seda', cuero: 'Cuero' } satisfies Record<FabricType, string>,
+  amount: { arcilla: 'Brillo', vidrio: 'Transparencia', metal: 'Brillo', plastico: 'Brillo' } as Partial<Record<MaterialPreset, string>>,
+  exported: (path: string) => `Guardado en ${path}`,
+  imported: (n: number) => (n === 1 ? 'Se agregó 1 parte' : `Se agregaron ${n} partes`),
+  claude: 'Claude',
+}
