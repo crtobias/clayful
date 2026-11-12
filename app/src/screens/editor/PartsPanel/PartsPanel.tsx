@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Icon } from '@/assets/icons/Icon'
 import { MaterialPanel } from '@/domain/materials/MaterialPanel/MaterialPanel'
 import type { Part } from '@/domain/scene/model'
@@ -12,15 +13,18 @@ interface Props {
   onDuplicate: (id: string) => void
   onDelete: (id: string) => void
   onMaterial: (id: string, patch: Partial<MaterialSpec>) => void
+  /** Control de low poly de la parte elegida. */
+  lowPoly: ReactNode
 }
 
 function materialLabel(part: Part): string {
   if (part.image) return 'Imagen'
   const m = part.material
-  return m.preset === 'tela' && m.fabric ? `${t.presets.tela} · ${t.fabrics[m.fabric]}` : t.presets[m.preset]
+  const base = m.preset === 'tela' && m.fabric ? `${t.presets.tela} · ${t.fabrics[m.fabric]}` : t.presets[m.preset]
+  return part.lowPoly ? `${base} · ${t.lowPoly}` : base
 }
 
-export function PartsPanel({ parts, selectedId, onSelect, onDuplicate, onDelete, onMaterial }: Props) {
+export function PartsPanel({ parts, selectedId, onSelect, onDuplicate, onDelete, onMaterial, lowPoly }: Props) {
   const selected = parts.find((p) => p.id === selectedId)
   return (
     <aside className={styles.panel} aria-label="Propiedades">
@@ -49,6 +53,7 @@ export function PartsPanel({ parts, selectedId, onSelect, onDuplicate, onDelete,
             <button type="button" className={styles.action} onClick={() => onDuplicate(selected.id)}><Icon name="copy" size={16} />{t.duplicate}</button>
             <button type="button" className={`${styles.action} ${styles.danger}`} onClick={() => onDelete(selected.id)}><Icon name="trash" size={16} />{t.delete}</button>
           </div>
+          {lowPoly}
           {!selected.image && (
             <MaterialPanel
               partName={selected.name}

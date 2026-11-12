@@ -109,8 +109,8 @@ function PartMesh({ part, showBox, showMask, onSelect, meshes, onSelectedRef }: 
   const geometry = getGeometry(part.geometryId)
   const vertexColors = Boolean(geometry?.hasAttribute('color'))
   const material = useMemo(
-    () => (part.image ? imageMaterial(part.image) : buildMaterial(part.material, getOriginalMaterial(part.geometryId), vertexColors)),
-    [part.image, part.material, part.geometryId, vertexColors],
+    () => (part.image ? imageMaterial(part.image) : buildMaterial(part.material, getOriginalMaterial(part.geometryId), vertexColors, Boolean(part.lowPoly))),
+    [part.image, part.material, part.geometryId, vertexColors, part.lowPoly],
   )
   if (!geometry) return null
   return (
@@ -205,6 +205,9 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
     let stroke: null | {
       mesh: Mesh
       geometry: BufferGeometry
+      /** Low poly: rehace la versión facetada (una vez por cuadro como mucho). */
+      regenerate?: () => BufferGeometry
+      pending?: number
       last: Vector3 | null
       lastHit: Intersection | null
       x: number
@@ -280,6 +283,16 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
       c.scale.setScalar(s.mode === 'pintar' ? s.paint.size : s.sculpt.size)
     }
 
+    /** Low poly en vivo: después de editar la malla lisa, rehace la facetada en el próximo cuadro. */
+    const redisplay = () => {
+      const st = stroke
+      if (!st?.regenerate || st.pending) return
+      st.pending = requestAnimationFrame(() => {
+        st.pending = undefined
+        st.mesh.geometry = st.regenerate!()
+      })
+    }
+
     /** Una pincelada (con todas sus copias de simetría). */
     const dab = (mesh: Mesh, hit: Intersection, e: PointerEvent) => {
       const s = settings.current
@@ -297,6 +310,7 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
           }, stroke!.ctx)
         }
         refresh(g, brush !== 'mascara', false, brush === 'mascara')
+        redisplay()
         return
       }
       const p = s.paint
@@ -321,6 +335,7 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
         }
       })
       refresh(g, false, true)
+      redisplay()
     }
 
     /** Recorre un tramo en pantalla de a 6 px para que el trazo no quede punteado. */
@@ -358,12 +373,15 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
       if (s.mode === 'pintar' && s.paint.tool === 'gotero') { s.hooks.onPick(pickColor(mesh.geometry, mesh.worldToLocal(hit.point.clone()))); return }
       if (s.mode === 'pintar' && s.paint.tool === 'balde') { s.hooks.onFill(partId); return }
 
-      const geometry = s.hooks.onStrokeStart(partId)
-      if (!geometry) return
-      mesh.geometry = geometry // la versión nueva se ve ya, sin esperar a React
+      const started = s.hooks.onStrokeStart(partId)
+      if (!started) return
+      const { geometry, regenerate } = started
+      // La versión nueva se ve ya, sin esperar a React (en low poly, la facetada).
+      mesh.geometry = regenerate ? regenerate() : geometry
       if (orbit) orbit.enabled = false
       el.setPointerCapture(e.pointerId)
-      stroke = { mesh, geometry, last: null, lastHit: hit, x: e.clientX, y: e.clientY, e }
+      stroke = { mesh, geometry, regenerate, last: null, lastHit: hit, x: e.clientX, y: e.clientY, e }
+      // En low poly el rayo pega en la facetada: el centro se toma igual (mismo espacio), la malla que se edita es la lisa.
       const { center, normal, scale } = localHit(mesh, hit)
 
       if (s.mode === 'esculpir') {
@@ -413,6 +431,7 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
         const delta = stroke.mesh.worldToLocal(p).sub(stroke.startLocal)
         for (const { grab, m } of stroke.grabs) moveGrab(stroke.geometry, grab, transformDelta(delta, m))
         refresh(stroke.geometry, true, false)
+        redisplay()
         return
       }
       if (stroke.snake && stroke.plane) {
@@ -429,6 +448,7 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
         stroke.snake = target
         stroke.plane = dragPlane(p)
         refresh(stroke.geometry, true, false)
+        redisplay()
         return
       }
       if (stroke.gradient) {
@@ -436,6 +456,7 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
         const to = stroke.mesh.worldToLocal(hit.point.clone())
         gradientFill(stroke.geometry, stroke.gradient.base, stroke.gradient.from, to, s.paint.color, s.paint.color2, s.paint.blend, s.paint.strength)
         refresh(stroke.geometry, false, true)
+        redisplay()
         return
       }
       sweep(stroke.x, stroke.y, e.clientX, e.clientY, e, hit && hit.object === stroke.mesh ? hit : undefined)
@@ -447,6 +468,8 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
       if (orbit) orbit.enabled = true
       if (!stroke) return
       if (stroke.timer) clearInterval(stroke.timer)
+      if (stroke.pending) { cancelAnimationFrame(stroke.pending); stroke.pending = undefined }
+      if (stroke.regenerate) stroke.mesh.geometry = stroke.regenerate()
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
       if (stroke.lastHit) lastEnd = { mesh: stroke.mesh, point: stroke.lastHit.point.clone() }
       stroke = null

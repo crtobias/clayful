@@ -157,6 +157,28 @@ export function registerTools(server: McpServer, bridge: AppBridge) {
     inputSchema: { part },
   }, relay('add_detail'))
 
+  server.registerTool('set_low_poly', {
+    title: 'Low poly',
+    description: 'Pone una parte en estilo low poly (caras planas, pocas) o la vuelve suave. Los trazos de esculpir y pintar sobre una parte low poly siguen siendo low poly.',
+    inputSchema: { part, level: z.enum(['apagado', 'muy_bajo', 'bajo', 'medio']) },
+  }, relay('set_low_poly'))
+
+  server.registerTool('run_code', {
+    title: 'Correr código',
+    description: [
+      'Corre JavaScript dentro de Clayful (como execute_blender_code). Para lo que las otras herramientas no hacen.',
+      'Variables: THREE (three.js completo) y clayful:',
+      '- clayful.parts: partes actuales. clayful.part(ref): una por id o nombre.',
+      '- clayful.add(geometry, { name, position, rotation, scale, preset, fabric, color, amount }): agrega un THREE.BufferGeometry como parte; devuelve el id.',
+      '- clayful.edit(ref, g => { ... }, { paint }): edita una copia de la malla (position, normal, color). Un paso de deshacer.',
+      '- clayful.geometry(ref): la geometría visible (solo leer).',
+      '- clayful.run(cmd): comando de escena: transform {id, position, rotation (radianes), scale}, set_material {id, material}, rename, duplicate, delete, select.',
+      '- console.log / clayful.log: vuelven en logs.',
+      'Se puede usar await. Lo que hagas con return vuelve en result. Metros, Y arriba, piso y=0. Después mirá con look.',
+    ].join('\n'),
+    inputSchema: { code: z.string().describe('Cuerpo de una función async de JavaScript.') },
+  }, relay('run_code'))
+
   server.registerTool('look', {
     title: 'Mirar la escena',
     description: 'Devuelve una imagen de la vista 3D. Usala después de cada cambio para ver el resultado.',

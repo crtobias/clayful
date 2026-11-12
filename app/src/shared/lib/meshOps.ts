@@ -148,3 +148,81 @@ export function refresh(g: BufferGeometry, moved: boolean, painted: boolean, mas
   }
   if (painted) g.attributes.color.needsUpdate = true
 }
+
+/**
+ * Low poly por celdas: junta los vértices que caen en la misma celda de una grilla 3D y rearma los triángulos.
+ * Es rápido (lineal), así que sirve para recalcular en vivo mientras se esculpe.
+ */
+export function clusterDecimate(src: BufferGeometry, cell: number): BufferGeometry {
+  const pos = src.attributes.position
+  const col = src.hasAttribute('color') ? src.attributes.color : null
+  const idx = src.index!.array as ArrayLike<number>
+  const map = new Map<string, number>()
+  const cluster = new Int32Array(pos.count)
+  const sums: number[] = []
+  const colors: number[] = []
+  const counts: number[] = []
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i)
+    const key = `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`
+    let c = map.get(key)
+    if (c === undefined) { c = counts.length; map.set(key, c); sums.push(0, 0, 0); colors.push(0, 0, 0); counts.push(0) }
+    cluster[i] = c
+    sums[c * 3] += x; sums[c * 3 + 1] += y; sums[c * 3 + 2] += z
+    if (col) { colors[c * 3] += col.getX(i); colors[c * 3 + 1] += col.getY(i); colors[c * 3 + 2] += col.getZ(i) }
+    counts[c]++
+  }
+  const n = counts.length
+  const verts = new Float32Array(n * 3)
+  const vcol = new Float32Array(n * 3).fill(1)
+  for (let c = 0; c < n; c++) {
+    for (let k = 0; k < 3; k++) {
+      verts[c * 3 + k] = sums[c * 3 + k] / counts[c]
+      if (col) vcol[c * 3 + k] = colors[c * 3 + k] / counts[c]
+    }
+  }
+  const seen = new Set<string>()
+  const tris: number[] = []
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = cluster[idx[t]], b = cluster[idx[t + 1]], c = cluster[idx[t + 2]]
+    if (a === b || b === c || a === c) continue
+    const key = [a, b, c].sort((p, q) => p - q).join(',')
+    if (seen.has(key)) continue
+    seen.add(key)
+    tris.push(a, b, c)
+  }
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(verts, 3))
+  g.setAttribute('color', new BufferAttribute(vcol, 3))
+  g.setAttribute('mask', new BufferAttribute(new Float32Array(n), 1))
+  g.setIndex(new BufferAttribute(new Uint32Array(tris), 1))
+  return finish(g)
+}
+
+/** Tamaño de celda para un nivel de low poly (1 = muy bajo, 3 = medio), según el tamaño de la pieza. */
+export function lowPolyCell(g: BufferGeometry, level: 1 | 2 | 3): number {
+  g.computeBoundingBox()
+  const size = g.boundingBox!.getSize(new Vector3())
+  const d = Math.max(size.x, size.y, size.z) || 1
+  return d / ({ 1: 5, 2: 8, 3: 13 } as const)[level]
+}
+
+/** Caras planas de verdad para exportar: cada triángulo con su normal y un solo color. */
+export function facetedCopy(src: BufferGeometry): BufferGeometry {
+  const g = (src.index ? src.toNonIndexed() : src.clone())
+  g.deleteAttribute('mask')
+  g.computeVertexNormals()
+  const col = g.attributes.color
+  if (col) {
+    for (let i = 0; i < col.count; i += 3) {
+      for (let k = 0; k < 3; k++) {
+        const get = (j: number) => (k === 0 ? col.getX(j) : k === 1 ? col.getY(j) : col.getZ(j))
+        const avg = (get(i) + get(i + 1) + get(i + 2)) / 3
+        for (let j = i; j < i + 3; j++) {
+          if (k === 0) col.setX(j, avg); else if (k === 1) col.setY(j, avg); else col.setZ(j, avg)
+        }
+      }
+    }
+  }
+  return g
+}

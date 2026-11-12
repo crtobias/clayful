@@ -6,6 +6,15 @@ export const SHAPES = ['cubo', 'esfera', 'cilindro', 'cono', 'dona', 'plano'] as
 export type Shape = (typeof SHAPES)[number]
 
 /** Una malla de la escena. La geometría vive en el registro (geometry.ts), no en el estado. */
+/** 1 = muy bajo, 2 = bajo, 3 = medio. */
+export type LowPolyLevel = 1 | 2 | 3
+
+export interface LowPoly {
+  level: LowPolyLevel
+  /** Geometría lisa (densa) de la que sale la low poly. Esculpir y pintar trabajan sobre esta. */
+  source: string
+}
+
 export interface Part {
   id: string
   name: string
@@ -17,6 +26,8 @@ export interface Part {
   material: MaterialSpec
   /** Imagen de referencia (data URL). Si está, la parte es un plano con la imagen. */
   image?: string
+  /** Estilo low poly: la geometría visible es una versión facetada de `source`. */
+  lowPoly?: LowPoly
 }
 
 export interface SceneState {
@@ -31,6 +42,7 @@ export type SceneCommand =
   | { type: 'set_material'; id: string; material: Partial<MaterialSpec> }
   | { type: 'transform'; id: string; position?: Vec3; rotation?: Vec3; scale?: Vec3 }
   | { type: 'set_geometry'; id: string; geometryId: string }
+  | { type: 'set_low_poly'; id: string; lowPoly: LowPoly | null }
   | { type: 'rename'; id: string; name: string }
   | { type: 'duplicate'; id: string }
   | { type: 'delete'; id: string }

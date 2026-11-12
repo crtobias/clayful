@@ -51,3 +51,15 @@ describe('applyCommand', () => {
     expect(() => applyCommand(empty, { type: 'delete', id: 'nada' }, id)).toThrow()
   })
 })
+
+describe('low poly', () => {
+  it('se prende y se apaga sin tocar lo demás', () => {
+    const a = applyCommand(empty, { type: 'add_shape', shape: 'cubo' }, id)
+    const pid = a.parts[0].id
+    const b = applyCommand(a, { type: 'set_low_poly', id: pid, lowPoly: { level: 2, source: 'src' } }, id)
+    expect(b.parts[0].lowPoly).toEqual({ level: 2, source: 'src' })
+    const c = applyCommand(b, { type: 'set_low_poly', id: pid, lowPoly: null }, id)
+    expect(c.parts[0].lowPoly).toBeUndefined()
+    expect(c.parts[0].name).toBe(a.parts[0].name)
+  })
+})

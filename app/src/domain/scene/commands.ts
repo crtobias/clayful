@@ -64,6 +64,12 @@ export function applyCommand(state: SceneState, cmd: SceneCommand, newId: () => 
     }
     case 'set_geometry':
       return { parts: replace(parts, cmd.id, { geometryId: cmd.geometryId }), selectedId, created: [] }
+    case 'set_low_poly': {
+      const part = find(parts, cmd.id)
+      const { lowPoly: _old, ...rest } = part
+      void _old
+      return { parts: parts.map((p) => (p.id === cmd.id ? (cmd.lowPoly ? { ...rest, lowPoly: cmd.lowPoly } : rest) : p)), selectedId, created: [] }
+    }
     case 'rename': {
       return { parts: replace(parts, cmd.id, { name: cmd.name.trim() || find(parts, cmd.id).name }), selectedId, created: [] }
     }

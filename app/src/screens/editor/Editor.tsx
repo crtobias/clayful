@@ -3,9 +3,9 @@ import { useScene, newId } from '@/domain/scene/store'
 import { getGeometry, getOriginalMaterial } from '@/domain/scene/geometry'
 import { IMPORT_EXTENSIONS, importFile } from '@/domain/scene/importFile'
 import { exportGlb } from '@/domain/scene/exportGlb'
-import { beginEdit } from '@/domain/scene/editable'
+import { beginEdit, lowPolyVersion } from '@/domain/scene/editable'
 import { describeScene, resolvePart, toolToCommand } from '@/domain/scene/tools'
-import type { Part, Shape, Vec3 } from '@/domain/scene/model'
+import type { LowPolyLevel, Part, Shape, Vec3 } from '@/domain/scene/model'
 import { buildMaterial } from '@/domain/materials/buildMaterial'
 import { fillColor } from '@/domain/paint/paint'
 import { clearMask, invertMask } from '@/domain/sculpt/brushes'
@@ -22,7 +22,9 @@ import { PartsPanel } from './PartsPanel/PartsPanel'
 import { SculptPanel } from './EditPanels/SculptPanel'
 import { PaintPanel } from './EditPanels/PaintPanel'
 import { Toast, type ToastMessage } from './Toast/Toast'
+import { LowPolyControl } from './LowPolyControl/LowPolyControl'
 import { claudeToast } from './claudeToast'
+import { runCode } from './runCode'
 import { fillFromTool, gradientFromTool, maskFromTool, paintFromTool, sculptFromTool } from './mcpEdit'
 import {
   DEFAULT_PAINT, DEFAULT_SCULPT, LOOK_VIEWS,
@@ -31,7 +33,7 @@ import {
 import styles from './Editor.module.scss'
 
 const materialFor = (part: Part) =>
-  buildMaterial(part.material, getOriginalMaterial(part.geometryId), Boolean(getGeometry(part.geometryId)?.hasAttribute('color')))
+  buildMaterial(part.material, getOriginalMaterial(part.geometryId), Boolean(getGeometry(part.geometryId)?.hasAttribute('color')), Boolean(part.lowPoly))
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 /**
@@ -45,8 +47,22 @@ function startEdit(partId: string, forPaint: boolean, moreDetail = false) {
   const res = beginEdit(part, forPaint, moreDetail)
   s.checkpoint()
   s.run({ type: 'set_geometry', id: partId, geometryId: res.geometryId }, { record: false })
+  if (res.lowPoly) s.run({ type: 'set_low_poly', id: partId, lowPoly: res.lowPoly }, { record: false })
   if (res.material) s.run({ type: 'set_material', id: partId, material: res.material }, { record: false })
-  return res.geometry
+  return { geometry: res.geometry, regenerate: res.regenerate }
+}
+
+/** Prende/cambia/apaga el estilo low poly de una parte (un paso de deshacer). */
+function setLowPoly(partId: string, level: LowPolyLevel | null) {
+  const s = useScene.getState()
+  const part = s.parts.find((p) => p.id === partId)
+  if (!part || part.image) return false
+  const next = lowPolyVersion(part, level)
+  if (!next) return false
+  s.checkpoint()
+  s.run({ type: 'set_geometry', id: partId, geometryId: next.geometryId }, { record: false })
+  s.run({ type: 'set_low_poly', id: partId, lowPoly: next.lowPoly }, { record: false })
+  return true
 }
 
 /** Pantalla principal. Orquesta escena, materiales, esculpir, pintar y el puente con Claude. */
@@ -100,21 +116,23 @@ export function Editor() {
   const hooks: EditHooks = useMemo(() => ({
     onStrokeStart: (partId) => startEdit(partId, modeRef.current === 'pintar'),
     onFill: (partId) => {
-      const g = startEdit(partId, true)
-      if (!g) return
-      fillColor(g, paintRef.current.color)
-      refresh(g, false, true)
+      const e = startEdit(partId, true)
+      if (!e) return
+      fillColor(e.geometry, paintRef.current.color)
+      refresh(e.geometry, false, true)
+      e.regenerate?.()
     },
     onPick: (color) => setPaint((p) => ({ ...p, color, tool: 'pincel' })),
   }), [])
 
   const mask = useCallback((action: 'invertir' | 'borrar') => {
     const id = useScene.getState().selectedId
-    const g = id ? startEdit(id, false) : null
-    if (!g) return
-    if (action === 'invertir') invertMask(g)
-    else clearMask(g)
-    refresh(g, false, false, true)
+    const e = id ? startEdit(id, false) : null
+    if (!e) return
+    if (action === 'invertir') invertMask(e.geometry)
+    else clearMask(e.geometry)
+    refresh(e.geometry, false, false, true)
+    e.regenerate?.()
   }, [])
 
   const moreDetail = useCallback(() => {
@@ -130,6 +148,8 @@ export function Editor() {
         return describeScene(s.parts, s.selectedId)
       case 'look': {
         const view = (LOOK_VIEWS as readonly string[]).includes(String(args.view)) ? (args.view as LookView) : 'actual'
+        // Al abrir la app la vista 3D tarda un momento en montarse: esperar hasta 5 s.
+        for (let i = 0; i < 50 && !captureRef.current; i++) await new Promise((r) => setTimeout(r, 100))
         if (!captureRef.current) throw new Error('La vista 3D todavía no está lista.')
         return { image: captureRef.current(view) }
       }
@@ -155,20 +175,36 @@ export function Editor() {
       case 'add_detail': {
         const part = resolvePart(s.parts, args.part)
         const forPaint = name === 'paint_stroke' || name === 'paint_gradient' || name === 'fill_color'
-        const g = startEdit(part.id, forPaint, name === 'add_detail')
-        if (!g) throw new Error('Esa parte no se puede editar.')
+        const edit = startEdit(part.id, forPaint, name === 'add_detail')
+        if (!edit) throw new Error('Esa parte no se puede editar.')
+        const g = edit.geometry
         const fresh = useScene.getState().parts.find((p) => p.id === part.id)!
         if (name === 'sculpt_stroke') sculptFromTool(g, fresh, args)
         if (name === 'paint_stroke') paintFromTool(g, fresh, args)
         if (name === 'paint_gradient') gradientFromTool(g, fresh, args)
         if (name === 'fill_color') fillFromTool(g, args)
         if (name === 'mask') maskFromTool(g, args)
+        edit.regenerate?.()
         const verb = {
           sculpt_stroke: 'esculpió', paint_stroke: 'pintó', paint_gradient: 'le hizo un degradado a', fill_color: 'pintó entera',
           mask: 'cambió la máscara de', add_detail: 'le dio más detalle a',
         }[name]
         notify(`Claude ${verb} ${part.name}`, true)
         return { part: part.name, vertices: g.attributes.position.count }
+      }
+      case 'run_code': {
+        const out = await runCode(String(args.code ?? ''), { startEdit })
+        notify('Claude corrió código', true)
+        return out
+      }
+      case 'set_low_poly': {
+        const part = resolvePart(s.parts, args.part)
+        const levels: Record<string, LowPolyLevel | null> = { apagado: null, muy_bajo: 1, bajo: 2, medio: 3 }
+        if (!(String(args.level) in levels)) throw new Error('level: apagado, muy_bajo, bajo o medio.')
+        setLowPoly(part.id, levels[String(args.level)])
+        notify(`Claude ${levels[String(args.level)] ? 'hizo low poly' : 'volvió a suave'} ${part.name}`, true)
+        const after = useScene.getState()
+        return describeScene(after.parts, after.selectedId)
       }
       default: {
         const res = s.run(toolToCommand(name, args, s.parts))
@@ -283,7 +319,14 @@ export function Editor() {
           {dragging && <div className={styles.drop}>{t.dropHere}</div>}
         </div>
         {mode === 'esculpir' && (
-          <SculptPanel partName={selected?.name ?? null} settings={sculpt} onChange={(patch) => setSculpt((p) => ({ ...p, ...patch }))} onMoreDetail={moreDetail} onMask={mask} />
+          <SculptPanel
+            partName={selected?.name ?? null}
+            settings={sculpt}
+            onChange={(patch) => setSculpt((p) => ({ ...p, ...patch }))}
+            onMoreDetail={moreDetail}
+            onMask={mask}
+            lowPoly={<LowPolyControl level={selected?.lowPoly?.level ?? null} disabled={!selected} onChange={(l) => selected && setLowPoly(selected.id, l)} />}
+          />
         )}
         {mode === 'pintar' && (
           <PaintPanel partName={selected?.name ?? null} settings={paint} onChange={(patch) => setPaint((p) => ({ ...p, ...patch }))} />
@@ -296,6 +339,7 @@ export function Editor() {
             onDuplicate={(id) => useScene.getState().run({ type: 'duplicate', id })}
             onDelete={(id) => useScene.getState().run({ type: 'delete', id })}
             onMaterial={(id, patch: Partial<MaterialSpec>) => useScene.getState().run({ type: 'set_material', id, material: patch })}
+            lowPoly={selected && !selected.image ? <LowPolyControl level={selected.lowPoly?.level ?? null} onChange={(l) => setLowPoly(selected.id, l)} /> : null}
           />
         )}
       </div>

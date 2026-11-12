@@ -43,8 +43,11 @@ export const DEFAULT_PAINT: PaintSettings = {
 
 /** Lo que la vista 3D le pide al editor para editar mallas (así el historial queda en un solo lugar). */
 export interface EditHooks {
-  /** Prepara una versión editable de la parte y la devuelve. */
-  onStrokeStart: (partId: string) => BufferGeometry | null
+  /**
+   * Prepara una versión editable de la parte. `geometry` es la malla que se edita;
+   * si la parte es low poly, `regenerate` rehace la versión facetada que se ve.
+   */
+  onStrokeStart: (partId: string) => { geometry: BufferGeometry; regenerate?: () => BufferGeometry } | null
   onFill: (partId: string) => void
   onPick: (color: string) => void
 }

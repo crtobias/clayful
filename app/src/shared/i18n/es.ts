@@ -101,4 +101,7 @@ export const t = {
   stencilHelp: 'Pintá a través de una imagen que queda fija en la pantalla.',
   stencilPick: 'Elegir imagen',
   stencilRemove: 'Quitar',
+  lowPoly: 'Low poly',
+  lowPolyHelp: 'Caras planas y pocas, como en los juegos low poly. Esculpí y pintá normal: queda low poly solo.',
+  lowPolyLevels: { 1: 'Muy bajo', 2: 'Bajo', 3: 'Medio' } as Record<1 | 2 | 3, string>,
 }

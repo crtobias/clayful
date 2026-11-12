@@ -1,5 +1,6 @@
 import { DoubleSide, Mesh, MeshBasicMaterial, SRGBColorSpace, Scene, TextureLoader, type Material } from 'three'
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
+import { facetedCopy } from '@/shared/lib/meshOps'
 import { getGeometry } from './geometry'
 import type { Part } from './model'
 
@@ -18,12 +19,13 @@ export async function exportGlb(parts: Part[], materialFor: (part: Part) => Mate
     } else {
       material = materialFor(part)
     }
-    const mesh = new Mesh(geometry, material)
+    // Low poly: caras planas de verdad en el archivo (cada triángulo con su normal y un color).
+    const mesh = new Mesh(part.lowPoly ? facetedCopy(geometry) : geometry, material)
     mesh.name = part.name
     mesh.position.set(...part.position)
     mesh.rotation.set(...part.rotation)
     mesh.scale.set(...part.scale)
-    if (!part.image) mesh.userData = { clayful: { material: part.material } }
+    if (!part.image) mesh.userData = { clayful: { material: part.material, lowPoly: part.lowPoly?.level } }
     scene.add(mesh)
   }
   const result = await new GLTFExporter().parseAsync(scene, { binary: true })

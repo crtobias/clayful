@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { t } from '@/shared/i18n/es'
 import type { SculptSettings } from '../types'
 import { SymmetryControl } from './SymmetryControl'
@@ -10,9 +11,11 @@ interface Props {
   onChange: (patch: Partial<SculptSettings>) => void
   onMoreDetail: () => void
   onMask: (action: 'invertir' | 'borrar') => void
+  /** Control de low poly (lo arma el editor). */
+  lowPoly: ReactNode
 }
 
-export function SculptPanel({ partName, settings, onChange, onMoreDetail, onMask }: Props) {
+export function SculptPanel({ partName, settings, onChange, onMoreDetail, onMask, lowPoly }: Props) {
   const roundTip = settings.tip === 'suave' || settings.tip === 'dura'
   return (
     <aside className={styles.panel} aria-label="Ajustes del pincel">
@@ -21,6 +24,8 @@ export function SculptPanel({ partName, settings, onChange, onMoreDetail, onMask
         <span className={styles.big}>{t.brushes[settings.brush]}</span>
         <span className={styles.help}>{t.brushHelp[settings.brush]}</span>
       </div>
+
+      {lowPoly}
 
       <Slider id="sc-size" label={t.size} value={Math.round(settings.size * 100)} unit=" cm" min={2} max={60} onChange={(v) => onChange({ size: v / 100 })} />
       <Slider id="sc-strength" label={t.strength} value={Math.round(settings.strength * 100)} unit="%" min={5} max={100} onChange={(v) => onChange({ strength: v / 100 })} />
