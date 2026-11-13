@@ -53,6 +53,9 @@ export function materialParams(spec: MaterialSpec): MaterialParams {
       return { color, roughness: 0.7, metalness: 0, pattern: 'wood', repeat: 1, clearcoat: 0.1 }
     case 'plastico':
       return { color, roughness: 0.6 - a * 0.5, metalness: 0, clearcoat: 0.2 + a * 0.6, clearcoatRoughness: 0.2 }
+    case 'pelo':
+      // Hebras: brillo suave a lo largo y algo de pelusa en los bordes.
+      return { color, roughness: 0.55, metalness: 0, sheen: 0.7, sheenRoughness: 0.5, sheenColor: mix(color, '#ffffff', 0.4), doubleSided: true }
     case 'gelatina':
       return {
         color: mix(color, '#ffffff', 0.35), roughness: 0.06, metalness: 0, transmission: 0.85, thickness: 0.8, ior: 1.35,

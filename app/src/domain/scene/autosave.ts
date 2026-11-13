@@ -1,4 +1,4 @@
-import { BufferAttribute, Mesh, MeshStandardMaterial, Scene, type BufferGeometry } from 'three'
+import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Scene } from 'three'
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { localGet, localSet } from '@/shared/lib/localStore'
@@ -19,22 +19,42 @@ interface Saved {
 }
 
 interface PartExtras {
-  clayful: { id: string; name?: string; material: MaterialSpec; lowPoly?: LowPolyLevel; image?: string }
+  clayful: { id: string; name?: string; material: MaterialSpec; lowPoly?: LowPolyLevel; image?: string; hair?: Part['hair']; persist?: unknown }
 }
+
+/**
+ * Datos que no son malla (el pelo: sus hebras) viajan en `geometry.userData.persist = { kind, data }`
+ * y se vuelven a armar al abrir con `rebuild`. Los arreglos tipados se pasan a listas para el JSON.
+ */
+export type Rebuild = (persist: { kind: string; data: Record<string, unknown> }) => BufferGeometry | null
+const pack = (v: unknown): unknown => (ArrayBuffer.isView(v) ? { __f32: Array.from(v as Float32Array) } : v)
+const unpack = (v: unknown): unknown => (v && typeof v === 'object' && '__f32' in v ? Float32Array.from((v as { __f32: number[] }).__f32) : v)
+const mapValues = (o: Record<string, unknown>, f: (v: unknown) => unknown) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, f(v)]))
 
 /** GLB con las partes tal cual (geometría lisa si es low poly: el facetado se rehace al abrir). */
 async function sceneToGlb(parts: Part[]): Promise<ArrayBuffer> {
   const scene = new Scene()
   const mat = new MeshStandardMaterial()
   for (const part of parts) {
-    const geometry = getGeometry(part.lowPoly?.source ?? part.geometryId)
+    let geometry = getGeometry(part.lowPoly?.source ?? part.geometryId)
     if (!geometry) continue
+    const persist = geometry.userData.persist as { kind: string; data: Record<string, unknown> } | undefined
+    // Lo que se rearma al abrir (pelo) no necesita su malla: va un triángulo de muestra y los datos.
+    if (persist) {
+      geometry = new BufferGeometry()
+      geometry.setAttribute('position', new BufferAttribute(new Float32Array(9), 3))
+    }
     const mesh = new Mesh(geometry, mat)
     mesh.name = part.name
     mesh.position.set(...part.position)
     mesh.rotation.set(...part.rotation)
     mesh.scale.set(...part.scale)
-    const extras: PartExtras = { clayful: { id: part.id, name: part.name, material: part.material, lowPoly: part.lowPoly?.level, image: part.image } }
+    const extras: PartExtras = {
+      clayful: {
+        id: part.id, name: part.name, material: part.material, lowPoly: part.lowPoly?.level, image: part.image, hair: part.hair,
+        persist: persist ? { kind: persist.kind, data: mapValues(persist.data, pack) } : undefined,
+      },
+    }
     mesh.userData = extras
     scene.add(mesh)
   }
@@ -42,14 +62,16 @@ async function sceneToGlb(parts: Part[]): Promise<ArrayBuffer> {
   return out as ArrayBuffer
 }
 
-async function glbToParts(data: ArrayBuffer): Promise<Part[]> {
+async function glbToParts(data: ArrayBuffer, rebuild?: Rebuild): Promise<Part[]> {
   const gltf = await new GLTFLoader().parseAsync(data, '')
   const parts: Part[] = []
   gltf.scene.traverse((o) => {
     const mesh = o as Mesh
     const extras = (mesh.userData as Partial<PartExtras>).clayful
     if (!mesh.isMesh || !extras) return
-    const g = mesh.geometry as BufferGeometry
+    let g = mesh.geometry as BufferGeometry
+    const persist = extras.persist as { kind: string; data: Record<string, unknown> } | undefined
+    if (persist && rebuild) g = rebuild({ kind: persist.kind, data: mapValues(persist.data, unpack) }) ?? g
     // El atributo propio de la máscara vuelve como "_mask".
     if (g.hasAttribute('_mask')) { g.setAttribute('mask', g.getAttribute('_mask') as BufferAttribute); g.deleteAttribute('_mask') }
     if (g.hasAttribute('color')) g.userData = { editable: true, topo: `restored:${newId()}` }
@@ -63,6 +85,7 @@ async function glbToParts(data: ArrayBuffer): Promise<Part[]> {
       scale: mesh.scale.toArray() as Vec3,
       material: extras.material,
       ...(extras.image ? { image: extras.image } : {}),
+      ...(extras.hair ? { hair: extras.hair } : {}),
     }
     if (extras.lowPoly) {
       const lp = lowPolyVersion(part, extras.lowPoly)
@@ -76,7 +99,7 @@ async function glbToParts(data: ArrayBuffer): Promise<Part[]> {
 let restored: Promise<void> | null = null
 
 /** Recupera lo último guardado (todas las pestañas). Se llama una vez al abrir. */
-export function restoreAutosave(): Promise<void> {
+export function restoreAutosave(rebuild?: Rebuild): Promise<void> {
   restored ??= (async () => {
     try {
       const saved = await localGet<Saved>(KEY)
@@ -84,7 +107,7 @@ export function restoreAutosave(): Promise<void> {
       const tabs: SceneTab[] = [{ id: MY_TAB, name: 'Mi escena', live: false }]
       for (const t of saved.tabs) if (t.id !== MY_TAB) tabs.push({ id: t.id, name: t.name, live: false })
       const scenes: Record<string, Part[]> = {}
-      for (const t of tabs) scenes[t.id] = saved.scenes[t.id] ? await glbToParts(saved.scenes[t.id]) : []
+      for (const t of tabs) scenes[t.id] = saved.scenes[t.id] ? await glbToParts(saved.scenes[t.id], rebuild) : []
       const active = tabs.some((t) => t.id === saved.activeTab) ? saved.activeTab : MY_TAB
       const others = Object.fromEntries(
         tabs.filter((t) => t.id !== active).map((t) => [t.id, { parts: scenes[t.id], selectedId: null, past: [], future: [] }]),

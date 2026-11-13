@@ -12,6 +12,7 @@ const INSTRUCTIONS = [
   '- ropa puesta: el cuerpo/maniquí como parte propia + la prenda de una sola capa abierta, 2–3 cm más grande, y simulate action "soltar".',
   '- cortinas y banderas: un plano vertical con tela y simulate "soltar" con pin "arriba".',
   '- manteles o telas sobre algo: simulate "tapar" (size = tamaño).',
+  'PELO: pelo, pelaje, melenas, barbas, colas peludas y similares se hacen con la herramienta hair (hebras con física), no esculpidos. length 0.003–0.01 = pelaje corto tipo rata; 0.2–0.8 = pelo largo que cae. Para juegos, al final pasalo a mechones low poly (hair action mechones, o set_low_poly sobre la parte "Pelo de …"): de cientos de miles de triángulos a unos miles.',
   'Biblioteca: library_list muestra modelos de ejemplo de Clayful (ej. "raton-con-capa", referencia de ropa con física) y los del usuario; library_add los agrega a la escena.',
   'Formas a medida en una sola malla: run_code con formas implícitas fundidas (la skill clayful-image-to-3d y el prompt imagen_a_3d traen el kit y el método por fases).',
 ].join('\n')

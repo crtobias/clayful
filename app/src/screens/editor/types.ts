@@ -1,5 +1,6 @@
-import type { BufferGeometry } from 'three'
+import type { BufferGeometry, Vector3 } from 'three'
 import type { SculptBrush } from '@/domain/sculpt/brushes'
+import { DEFAULT_HAIR, type HairBrush, type HairSettings } from '@/domain/physics/hair'
 import type { BlendMode, PaintTool } from '@/domain/paint/paint'
 import type { Tip } from '@/shared/lib/brushShape'
 import { NO_SYMMETRY, type Symmetry } from '@/shared/lib/symmetry'
@@ -8,7 +9,8 @@ export type Mode = 'modelar' | 'esculpir' | 'pintar'
 export type Tool = 'elegir' | 'mover' | 'girar' | 'escalar'
 
 export interface SculptSettings {
-  brush: SculptBrush
+  brush: SculptBrush | HairBrush
+  hair: HairSettings
   tip: Tip
   /** Radio en metros (mundo). */
   size: number
@@ -34,7 +36,7 @@ export interface PaintSettings {
 }
 
 export const DEFAULT_SCULPT: SculptSettings = {
-  brush: 'sumar', tip: 'suave', size: 0.15, strength: 0.5, angle: 0, symmetry: { ...NO_SYMMETRY, x: true },
+  brush: 'sumar', hair: DEFAULT_HAIR, tip: 'suave', size: 0.15, strength: 0.5, angle: 0, symmetry: { ...NO_SYMMETRY, x: true },
 }
 export const DEFAULT_PAINT: PaintSettings = {
   tool: 'pincel', color: '#4a72b8', color2: '#ffffff', tip: 'suave', angle: 0, size: 0.08, softness: 0.4, strength: 0.8,
@@ -50,6 +52,11 @@ export interface EditHooks {
   onStrokeStart: (partId: string) => { geometry: BufferGeometry; regenerate?: () => BufferGeometry } | null
   onFill: (partId: string) => void
   onPick: (color: string) => void
+  /**
+   * Pinceles de pelo: arranca un trazo sobre la parte (la piel). Cada pincelada va en el espacio local de la piel.
+   * `delta` = cuánto se movió el pincel desde la pincelada anterior (para peinar).
+   */
+  onHairStart: (partId: string) => { dab: (center: Vector3, normal: Vector3, radius: number, delta: Vector3) => void; end: () => void } | null
 }
 
 export const LOOK_VIEWS = ['actual', 'frente', 'atras', 'izquierda', 'derecha', 'arriba', 'perspectiva'] as const

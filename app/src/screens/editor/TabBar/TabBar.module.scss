@@ -10,3 +10,7 @@
 .dot.live { background: #2f9e68; }
 .close { width: 26px; height: 100%; margin-left: -6px; border: none; background: none; font-size: 16px; color: var(--text-2); cursor: pointer; border-radius: 999px;
   &:hover { color: var(--text); } }
+.add { flex: none; width: 30px; height: 30px; border: 1px dashed var(--border); border-radius: 999px; background: none; font-size: 18px; line-height: 1; color: var(--text-2); cursor: pointer;
+  &:hover { border-color: #b9bec8; color: var(--text); } }
+.input { width: 140px; height: 100%; padding: 0 12px; border: none; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: inherit; outline: none; }
+.danger { height: 22px; margin-right: 4px; padding: 0 10px; border: none; border-radius: 999px; background: #d64545; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }

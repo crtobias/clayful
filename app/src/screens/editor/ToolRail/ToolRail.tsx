@@ -1,6 +1,7 @@
 import { Icon, type IconName } from '@/assets/icons/Icon'
 import type { Shape } from '@/domain/scene/model'
 import { SCULPT_BRUSHES, type SculptBrush } from '@/domain/sculpt/brushes'
+import { HAIR_BRUSHES, type HairBrush } from '@/domain/physics/hair'
 import { PAINT_TOOLS, type PaintTool } from '@/domain/paint/paint'
 import { t } from '@/shared/i18n/es'
 import type { Mode, Tool } from '../types'
@@ -9,10 +10,10 @@ import styles from './ToolRail.module.scss'
 interface Props {
   mode: Mode
   tool: Tool
-  brush: SculptBrush
+  brush: SculptBrush | HairBrush
   paintTool: PaintTool
   onTool: (tool: Tool) => void
-  onBrush: (brush: SculptBrush) => void
+  onBrush: (brush: SculptBrush | HairBrush) => void
   onPaintTool: (tool: PaintTool) => void
   onAddShape: (shape: Shape) => void
   onOpen: () => void
@@ -41,6 +42,12 @@ export function ToolRail({ mode, tool, brush, paintTool, onTool, onBrush, onPain
       <nav className={styles.rail} aria-label="Pinceles">
         <span className={styles.label}>{t.brush}</span>
         {SCULPT_BRUSHES.map((b) => (
+          <button key={b} type="button" className={`${styles.tool} ${brush === b ? styles.active : ''}`} aria-pressed={brush === b} title={t.brushHelp[b]} onClick={() => onBrush(b)}>
+            <Icon name={b} size={24} />{t.brushes[b]}
+          </button>
+        ))}
+        <span className={styles.label}>{t.hair.sectionLabel}</span>
+        {HAIR_BRUSHES.map((b) => (
           <button key={b} type="button" className={`${styles.tool} ${brush === b ? styles.active : ''}`} aria-pressed={brush === b} title={t.brushHelp[b]} onClick={() => onBrush(b)}>
             <Icon name={b} size={24} />{t.brushes[b]}
           </button>

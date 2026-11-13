@@ -20,6 +20,8 @@ interface Snapshot {
 }
 
 export const MY_TAB = 'mia'
+/** Escenas del usuario (no de Claude): "Mi escena" y las que crea con +. */
+export const isMyTab = (id: string) => id === MY_TAB || id.startsWith(`${MY_TAB}-`)
 
 interface SceneStore {
   tabs: SceneTab[]
@@ -30,6 +32,9 @@ interface SceneStore {
   openTab: (id: string, name: string, live: boolean) => void
   switchTab: (id: string) => void
   closeTab: (id: string) => void
+  /** Escena nueva del usuario, vacía; se cambia a ella. */
+  newScene: () => string
+  renameTab: (id: string, name: string) => void
   /** Marca qué sesiones de Claude siguen conectadas. */
   setLive: (ids: string[]) => void
   parts: Part[]
@@ -58,7 +63,7 @@ export const useScene = create<SceneStore>((set, get) => ({
     const hit = s.tabs.find((t) => t.id === id)
     if (hit) return { tabs: s.tabs.map((t) => (t.id === id ? { ...t, name, live } : t)) }
     // La misma sesión que volvió (reinicio de Claude): retoma su pestaña desconectada con su escena.
-    const old = s.tabs.find((t) => t.id !== MY_TAB && !t.live && t.name === name)
+    const old = s.tabs.find((t) => !isMyTab(t.id) && !t.live && t.name === name)
     if (old) {
       const saved = { ...s.saved }
       if (saved[old.id]) { saved[id] = saved[old.id]; delete saved[old.id] }
@@ -88,7 +93,21 @@ export const useScene = create<SceneStore>((set, get) => ({
     delete saved[id]
     set({ tabs: after.tabs.filter((t) => t.id !== id), saved })
   },
-  setLive: (ids) => set((s) => ({ tabs: s.tabs.map((t) => (t.id === MY_TAB ? t : { ...t, live: ids.includes(t.id) })) })),
+  newScene: () => {
+    const s = get()
+    const used = new Set(s.tabs.map((t) => t.name))
+    let n = 2
+    while (used.has(`Escena ${n}`)) n++
+    const id = `${MY_TAB}-${newId()}`
+    set({ tabs: [...s.tabs, { id, name: `Escena ${n}`, live: false }] })
+    get().switchTab(id)
+    return id
+  },
+  renameTab: (id, name) => {
+    const clean = name.trim().slice(0, 40)
+    if (clean) set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, name: clean } : t)) }))
+  },
+  setLive: (ids) => set((s) => ({ tabs: s.tabs.map((t) => (isMyTab(t.id) ? t : { ...t, live: ids.includes(t.id) })) })),
   parts: [],
   selectedId: null,
   past: [],

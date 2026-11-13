@@ -13,12 +13,14 @@ import { buildMaterial, imageMaterial } from '@/domain/materials/buildMaterial'
 import { moveGrab, sculptDab, snakeDab, startGrab, strokeContext, type Grab, type SculptBrush, type StrokeContext } from '@/domain/sculpt/brushes'
 import { blurDab, gradientFill, paintDab, pickColor, smearDab } from '@/domain/paint/paint'
 import { refresh } from '@/shared/lib/meshOps'
+import { isHairBrush } from '@/domain/physics/hair'
 import { tipWeight, type Tip } from '@/shared/lib/brushShape'
 import { symmetryCopies, transformDelta } from '@/shared/lib/symmetry'
 import { t } from '@/shared/i18n/es'
+import { Icon } from '@/assets/icons/Icon'
 import type { CaptureFn, EditHooks, LookView, Mode, PaintSettings, SculptSettings, Tool } from '../types'
 import styles from './Viewport.module.scss'
-import { FlyControls } from './FlyControls'
+import { FlyControls, requestCenter } from './FlyControls'
 
 interface Props {
   parts: Part[]
@@ -65,6 +67,7 @@ export function Viewport(props: Props) {
             <PartMesh
               key={part.id}
               part={part}
+              parent={part.hair ? parts.find((p) => p.id === part.hair!.parentId) : undefined}
               showBox={part.id === selectedId && mode === 'modelar'}
               showMask={mode === 'esculpir'}
               onSelect={onSelect}
@@ -86,9 +89,9 @@ export function Viewport(props: Props) {
             })}
           />
         )}
-        {/* Botón derecho = volar como en Godot (FlyControls); la órbita usa izquierdo y rueda. */}
-        <OrbitControls makeDefault mouseButtons={{ LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.PAN, RIGHT: null as unknown as MOUSE }} />
-        <FlyControls />
+        {/* Botón derecho = volar como en Godot (FlyControls), rueda = avanzar; la órbita usa el izquierdo. */}
+        <OrbitControls makeDefault enableZoom={false} mouseButtons={{ LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.PAN, RIGHT: null as unknown as MOUSE }} />
+        <FlyControls meshes={meshes} selectedId={selectedId} />
         {mode !== 'modelar' && <StrokeController {...props} meshes={meshes} />}
         <CaptureBridge onReady={onCaptureReady} />
       </Canvas>
@@ -96,6 +99,9 @@ export function Viewport(props: Props) {
       {mode === 'pintar' && props.paint.stencil && <img className={styles.stencil} src={props.paint.stencil} alt="" />}
       {parts.length === 0 && <p className={styles.empty}>{t.noParts}</p>}
       <p className={styles.hint}>{hint}</p>
+      <button type="button" className={styles.center} title={t.centerHelp} onClick={requestCenter}>
+        <Icon name="target" size={16} />{t.center}
+      </button>
     </section>
   )
 }
@@ -107,9 +113,13 @@ interface PartMeshProps {
   onSelect: (id: string) => void
   meshes: MutableRefObject<Map<string, Mesh>>
   onSelectedRef?: (obj: Object3D | null) => void
+  /** Pelo: la parte que lo lleva (el pelo usa su lugar, giro y escala). */
+  parent?: Part
 }
 
-function PartMesh({ part, showBox, showMask, onSelect, meshes, onSelectedRef }: PartMeshProps) {
+function PartMesh({ part, showBox, showMask, onSelect, meshes, onSelectedRef, parent }: PartMeshProps) {
+  // El pelo sigue a su parte y no se puede agarrar con el mouse (se pinta sobre la piel).
+  const place = part.hair && parent ? parent : part
   const geometry = getGeometry(part.geometryId)
   const vertexColors = Boolean(geometry?.hasAttribute('color'))
   const material = useMemo(
@@ -126,9 +136,10 @@ function PartMesh({ part, showBox, showMask, onSelect, meshes, onSelectedRef }: 
       name={part.name}
       geometry={geometry}
       material={material}
-      position={part.position}
-      rotation={part.rotation}
-      scale={part.scale}
+      position={place.position}
+      rotation={place.rotation}
+      scale={place.scale}
+      raycast={part.hair ? () => null : undefined}
       castShadow={!part.image}
       receiveShadow
       onClick={(e) => { e.stopPropagation(); onSelect(part.id) }}
@@ -224,6 +235,9 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
       carry?: (RGB | null)[]
       gradient?: { base: Float32Array; from: Vector3 }
       timer?: ReturnType<typeof setInterval>
+      /** Pinceles de pelo: el trazo lo maneja el editor. */
+      hair?: NonNullable<ReturnType<EditHooks['onHairStart']>>
+      lastLocal?: Vector3
       e: PointerEvent
     } = null
 
@@ -302,8 +316,14 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
       const s = settings.current
       const g = stroke!.geometry
       const { center, normal, scale } = localHit(mesh, hit)
+      if (stroke!.hair) {
+        const delta = stroke!.lastLocal ? center.clone().sub(stroke!.lastLocal) : new Vector3()
+        stroke!.hair.dab(center, normal, s.sculpt.size / scale, delta)
+        stroke!.lastLocal = center
+        return
+      }
       if (s.mode === 'esculpir') {
-        let brush: SculptBrush = s.sculpt.brush
+        let brush = s.sculpt.brush as SculptBrush
         if (e.shiftKey && brush !== 'mascara') brush = 'suavizar'
         if (brush === 'arrastrar' || brush === 'gancho') return
         const radius = s.sculpt.size / scale
@@ -376,6 +396,15 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
       const mesh = hit.object as Mesh
       if (s.mode === 'pintar' && s.paint.tool === 'gotero') { s.hooks.onPick(pickColor(mesh.geometry, mesh.worldToLocal(hit.point.clone()))); return }
       if (s.mode === 'pintar' && s.paint.tool === 'balde') { s.hooks.onFill(partId); return }
+      if (s.mode === 'esculpir' && isHairBrush(s.sculpt.brush)) {
+        const hair = s.hooks.onHairStart(partId)
+        if (!hair) return
+        if (orbit) orbit.enabled = false
+        el.setPointerCapture(e.pointerId)
+        stroke = { mesh, geometry: mesh.geometry, last: hit.point.clone(), lastHit: hit, x: e.clientX, y: e.clientY, e, hair }
+        dab(mesh, hit, e)
+        return
+      }
 
       const started = s.hooks.onStrokeStart(partId)
       if (!started) return
@@ -472,6 +501,7 @@ function StrokeController({ selectedId, mode, sculpt, paint, hooks, onSelect, me
       if (orbit) orbit.enabled = true
       if (!stroke) return
       if (stroke.timer) clearInterval(stroke.timer)
+      stroke.hair?.end()
       if (stroke.pending) { cancelAnimationFrame(stroke.pending); stroke.pending = undefined }
       if (stroke.regenerate) stroke.mesh.geometry = stroke.regenerate()
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)

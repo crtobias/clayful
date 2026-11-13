@@ -167,6 +167,31 @@ export function registerTools(server: McpServer, bridge: AppBridge) {
     },
   }, relay('set_low_poly'))
 
+  server.registerTool('hair', {
+    title: 'Pelo con física',
+    description: [
+      'Pelo de verdad sobre una parte (hebras con física: cae con la gravedad y choca con la piel, como la tela). Se guarda como la parte "Pelo de …", que sigue a la parte.',
+      '- crecer: hace crecer pelo en toda la parte (sin points) o alrededor de points [[x,y,z],…] (mundo) con radius.',
+      '- peinar: lleva el pelo en la dirección comb [dx,dy,dz] (mundo) en la zona de points.',
+      '- recortar: acorta el pelo en la zona de points. borrar: lo saca. caer: todo el pelo vuelve a caer.',
+      '- mechones: LOW POLY para juegos. Junta las hebras (de toda la parte o de la zona de points) en mechones facetados de tamaño clump (metros, 0.005–0.05; 0 = vuelven a ser hebras). Baja de cientos de miles de triángulos a unos miles. Devuelve triangles.',
+      'length en metros: 0.003–0.01 pelaje de rata, 0.03–0.1 pelo corto, 0.2–0.8 pelo largo. stiffness 0 = cae, 1 = parado. density hebras/cm² (1–30). width = radio de la hebra en metros (0.0005–0.003). color #rrggbb.',
+    ].join('\n'),
+    inputSchema: {
+      part,
+      action: z.enum(['crecer', 'peinar', 'recortar', 'mechones', 'borrar', 'caer']),
+      clump: z.number().min(0).max(0.2).optional(),
+      points: z.array(vec3).optional(),
+      radius: z.number().min(0.005).max(2).optional(),
+      comb: vec3.optional(),
+      length: z.number().min(0.003).max(0.8).optional(),
+      density: z.number().min(0.5).max(40).optional(),
+      width: z.number().min(0.0002).max(0.008).optional(),
+      stiffness: z.number().min(0).max(1).optional(),
+      color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    },
+  }, relay('hair'))
+
   server.registerTool('library_list', {
     title: 'Biblioteca: ver modelos',
     description: 'Lista los modelos de la Biblioteca: los que vienen con Clayful (source "clayful", ej. "raton-con-capa": ejemplo de referencia de ropa con física de tela) y los que guardó el usuario (source "mio"). Miralos antes de armar algo parecido.',

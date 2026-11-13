@@ -29,6 +29,8 @@ export interface Part {
   image?: string
   /** Estilo low poly: la geometría visible es una versión facetada de `source`. */
   lowPoly?: LowPoly
+  /** Pelo: esta parte son las hebras de otra parte (la sigue cuando se mueve). Las hebras viven en geometry.userData.hair. */
+  hair?: { parentId: string }
 }
 
 export interface SceneState {

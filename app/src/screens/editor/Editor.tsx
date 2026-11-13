@@ -29,6 +29,9 @@ import { allItems, deleteMine, loadItem, saveMine, type LibraryItem } from '@/do
 import { LowPolyControl } from './LowPolyControl/LowPolyControl'
 import { claudeToast } from './claudeToast'
 import { runCode } from './runCode'
+import { dropAllHair, hairDataOf, hairFromTool, hairPartOf, rebuildHair, setHairLowPoly, startHair } from './hairRun'
+import { hairTriangles, isHairBrush, LENGTH_RANGE } from '@/domain/physics/hair'
+import { Vector3 } from 'three'
 import { restoreAutosave, startAutosave, whenRestored } from '@/domain/scene/autosave'
 import { isSimulatedCloth, simulate, type SimAction } from './physicsRun'
 import { PhysicsControl } from './PhysicsControl/PhysicsControl'
@@ -66,6 +69,8 @@ function setLowPoly(partId: string, level: LowPolyLevel | null) {
   const s = useScene.getState()
   const part = s.parts.find((p) => p.id === partId)
   if (!part || part.image) return false
+  // En el pelo, low poly = mechones (simplificar hebras finas las rompe).
+  if (part.hair && hairDataOf(part)) return setHairLowPoly(part.id, level)
   const next = lowPolyVersion(part, level)
   if (!next) return false
   s.checkpoint()
@@ -100,10 +105,23 @@ export function Editor() {
   const fileInput = useRef<HTMLInputElement>(null)
   const modeRef = useRef(mode)
   const paintRef = useRef(paint)
-  useEffect(() => { modeRef.current = mode; paintRef.current = paint }, [mode, paint])
+  const sculptRef = useRef(sculpt)
+  useEffect(() => { modeRef.current = mode; paintRef.current = paint; sculptRef.current = sculpt }, [mode, paint, sculpt])
+
+  // Al elegir una parte con pelo, el panel de pelo toma su color, largo y rigidez (así pintar no cambia el pelo que ya hay).
+  useEffect(() => {
+    const hp = selectedId ? hairPartOf(useScene.getState().parts, useScene.getState().parts.find((p) => p.id === selectedId)?.hair?.parentId ?? selectedId) : undefined
+    const data = hairDataOf(hp)
+    if (!hp || !data) return
+    setSculpt((p) => ({ ...p, hair: { ...p.hair, color: hp.material.color, stiffness: data.stiffness, width: data.width } }))
+  }, [selectedId])
 
   const notify = useCallback((text: string, fromClaude = false) => setToast({ key: Date.now(), text, fromClaude }), [])
   const selected = parts.find((p) => p.id === selectedId) ?? null
+  const selectedHair = selected ? hairDataOf(hairPartOf(parts, selected.hair?.parentId ?? selected.id)) : undefined
+  // Pelo con hebras: la barra son los mechones. Pelo viejo (ya malla común) o cualquier otra parte: low poly normal.
+  const lowPolyLevel = selected?.hair && selectedHair ? selectedHair.clumpLevel ?? null : selected?.lowPoly?.level ?? null
+  const selectedHairTris = useMemo(() => (selectedHair ? hairTriangles(selectedHair) : 0), [selectedHair])
 
   const importBytes = useCallback(async (name: string, data: ArrayBuffer) => {
     const added = await importFile(name, data, { newId, convertBlend: isDesktop ? convertBlend : undefined })
@@ -142,6 +160,10 @@ export function Editor() {
       e.regenerate?.()
     },
     onPick: (color) => setPaint((p) => ({ ...p, color, tool: 'pincel' })),
+    onHairStart: (partId) => {
+      const sc = sculptRef.current
+      return isHairBrush(sc.brush) ? startHair(partId, sc.brush, sc.hair, sc.symmetry) : null
+    },
   }), [])
 
   const mask = useCallback((action: 'invertir' | 'borrar') => {
@@ -261,6 +283,25 @@ export function Editor() {
         notify(t.library.saved(item.name), true)
         return { id: item.id, name: item.name }
       }
+      case 'hair': {
+        const part = resolvePart(s.parts, args.part)
+        const num = (v: unknown, d: number, lo: number, hi: number) => (typeof v === 'number' ? Math.min(hi, Math.max(lo, v)) : d)
+        const base = sculptRef.current.hair
+        const settings = {
+          length: num(args.length, base.length, LENGTH_RANGE[0], LENGTH_RANGE[1]),
+          density: num(args.density, base.density, 0.5, 40),
+          width: num(args.width, base.width, 0.0002, 0.008),
+          stiffness: num(args.stiffness, base.stiffness, 0, 1),
+          color: typeof args.color === 'string' && /^#[0-9a-f]{6}$/i.test(args.color) ? args.color : base.color,
+        }
+        const vec = (v: unknown) => (Array.isArray(v) && v.length === 3 ? new Vector3(...(v as [number, number, number])) : null)
+        const pts = Array.isArray(args.points) ? (args.points as unknown[]).map(vec).filter((v): v is Vector3 => Boolean(v)) : null
+        const n = hairFromTool(part.id, String(args.action ?? 'crecer'), settings, pts && pts.length ? pts : null, num(args.radius, 0.06, 0.005, 2), vec(args.comb), typeof args.clump === 'number' ? num(args.clump, 0.015, 0, 0.2) : undefined)
+        notify(`Claude ${String(args.action ?? 'crecer') === 'crecer' ? 'le hizo crecer pelo a' : 'arregló el pelo de'} ${part.name}`, true)
+        const after = useScene.getState()
+        const hairData = hairDataOf(hairPartOf(after.parts, part.hair?.parentId ?? part.id))
+        return { strands: n, triangles: hairData ? hairTriangles(hairData) : 0, ...describeScene(after.parts, after.selectedId) }
+      }
       case 'simulate': {
         const part = resolvePart(s.parts, args.part)
         const action = String(args.action) as SimAction
@@ -312,7 +353,7 @@ export function Editor() {
   useEffect(() => {
     let stop: (() => void) | undefined
     let alive = true
-    void restoreAutosave().then(() => {
+    void restoreAutosave(rebuildHair).then(() => {
       if (!alive) return
       stop = startAutosave()
       // Al entrar con la escena vacía, se abre la Biblioteca para arrancar desde un modelo.
@@ -392,7 +433,13 @@ export function Editor() {
         onExport={exportScene}
       />
       {tabs.length > 1 && (
-        <TabBar tabs={tabs} active={activeTab} onSwitch={(id) => useScene.getState().switchTab(id)} onClose={(id) => useScene.getState().closeTab(id)} />
+        <TabBar
+          tabs={tabs} active={activeTab}
+          onSwitch={(id) => useScene.getState().switchTab(id)}
+          onClose={(id) => useScene.getState().closeTab(id)}
+          onNew={() => useScene.getState().newScene()}
+          onRename={(id, name) => useScene.getState().renameTab(id, name)}
+        />
       )}
       <div className={styles.body}>
         <ToolRail
@@ -458,7 +505,11 @@ export function Editor() {
             onChange={(patch) => setSculpt((p) => ({ ...p, ...patch }))}
             onMoreDetail={moreDetail}
             onMask={mask}
-            lowPoly={<LowPolyControl level={selected?.lowPoly?.level ?? null} disabled={!selected} onChange={(l) => selected && setLowPoly(selected.id, l)} />}
+            lowPoly={<LowPolyControl level={lowPolyLevel} disabled={!selected} onChange={(l) => selected && setLowPoly(selected.id, l)} />}
+            hairCount={selectedHair?.n ?? 0}
+            hairTris={selectedHairTris}
+            onHairFall={() => { if (selected) { const n = dropAllHair(selected.id); if (n) notify(t.hair.count(n)) } }}
+            onClumpAll={(on) => { if (selected) hairFromTool(selected.id, 'mechones', sculpt.hair, null, 0, null, on ? sculpt.size * 0.5 : 0) }}
           />
         )}
         {mode === 'pintar' && (
@@ -472,7 +523,7 @@ export function Editor() {
             onDuplicate={(id) => useScene.getState().run({ type: 'duplicate', id })}
             onDelete={(id) => useScene.getState().run({ type: 'delete', id })}
             onMaterial={(id, patch: Partial<MaterialSpec>) => useScene.getState().run({ type: 'set_material', id, material: patch })}
-            lowPoly={selected && !selected.image ? <LowPolyControl level={selected.lowPoly?.level ?? null} onChange={(l) => setLowPoly(selected.id, l)} /> : null}
+            lowPoly={selected && !selected.image ? <LowPolyControl level={lowPolyLevel} onChange={(l) => setLowPoly(selected.id, l)} /> : null}
             physics={selected && !selected.image ? (
               <PhysicsControl
                 kind={selected.material.preset === 'gelatina' ? 'gelatina' : 'tela'}

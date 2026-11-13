@@ -57,6 +57,27 @@ Todo se deshace con `undo`.
 - **Capas y ponchos:** que los dos lados se crucen adelante (uno 1–2 cm más afuera) y simulá con `pin: "arriba"`: el cuello queda abotonado y el resto cae. Poné hombros o brazos debajo para que la capa se abra en A.
 - Para la ropa, una prenda que atraviesa el cuerpo sale mal: dejá 2–3 cm de holgura y alineá las mangas al eje del brazo. Mirá `assets/ejemplo-maniqui.js` y `assets/ejemplo-remera.js`.
 
+## Regla del pelo: hebras con física
+
+**Pelo, pelaje, melenas, barbas, flequillos, colas peludas y bigotes se hacen con la herramienta `hair`, no esculpidos.**
+
+- Son hebras de verdad: la raíz queda pegada a la piel, caen con la gravedad y chocan con la parte, igual que la tela.
+- Quedan en una parte aparte, "Pelo de …", que sigue a la parte cuando la movés.
+- **Largo:**
+  - 0,3–1 cm: pelaje de rata o ratón;
+  - 2–8 cm: pelo corto o animal de peluche;
+  - 20–80 cm: melena que cae.
+- **Rigidez:**
+  - 0,7–0,9: pelaje parado;
+  - 0,1–0,3: pelo que cae.
+- **Densidad:**
+  - 2–4 hebras/cm² para melenas (más es lento);
+  - 4–8 para pelaje corto.
+- Orden: primero la forma y la pintura de la piel, después `hair` `crecer` (sin `points` = toda la parte; con `points` + `radius` = solo esa zona: cabeza, cola, cejas). Después `peinar` (con `comb`), `recortar` o `borrar` para dar forma, y `caer` si moviste o giraste la parte.
+- **Para juegos (low poly):** al final, `hair` `mechones` con `clump` 0,01–0,03 m (o `set_low_poly` sobre la parte "Pelo de …": la barra decide el tamaño de los mechones). Las hebras se juntan en mechones facetados y bajan de cientos de miles de triángulos a unos miles; `clump: 0` las vuelve a soltar. Con `points` se hace solo en una zona.
+- Para la cabeza de un personaje: hacé crecer en la parte de arriba y atrás, no en la cara, y recortá el flequillo.
+- En la app: modo Esculpir → pinceles Pelo, Peinar, Recortar, Mechones y Borrar pelo, con Largo, Densidad, Grosor, Rigidez y Color. El panel muestra los triángulos.
+
 ## Ejemplo de referencia para ropa
 
 Antes de hacer ropa, mirá el **Ratón con capa** (de crtobias), que viene en la Biblioteca de Clayful:

@@ -1,5 +1,5 @@
 /** Presets de material que el usuario ve. 'original' existe solo para modelos importados. */
-export const MATERIAL_PRESETS = ['arcilla', 'tela', 'gelatina', 'vidrio', 'metal', 'madera', 'plastico'] as const
+export const MATERIAL_PRESETS = ['arcilla', 'tela', 'gelatina', 'pelo', 'vidrio', 'metal', 'madera', 'plastico'] as const
 export type MaterialPreset = (typeof MATERIAL_PRESETS)[number] | 'original'
 
 export const FABRIC_TYPES = ['algodon', 'jean', 'lana', 'punto', 'seda', 'raso', 'terciopelo', 'arpillera', 'cuero'] as const
@@ -19,6 +19,7 @@ export const PRESET_COLOR: Record<MaterialPreset, string> = {
   arcilla: '#d59e84',
   tela: '#e5484d',
   gelatina: '#e5484d',
+  pelo: '#6b4a35',
   vidrio: '#cfe6f5',
   metal: '#c9cdd3',
   madera: '#b9834a',

@@ -44,6 +44,8 @@ export interface PhysicsWorld {
   gravity: number
   /** Pérdida de velocidad por paso (aire). */
   damping: number
+  /** Dirección de la gravedad (por defecto, hacia abajo en Y). Sirve para simular en el espacio de una parte girada. */
+  down?: [number, number, number]
 }
 
 export interface Spring { a: number; b: number; stiffness: number; /** XPBD: flexibilidad en m/N. */ compliance?: number }
@@ -337,10 +339,12 @@ export function stepXpbd(b: SoftBody, world: PhysicsWorld, dt: number, substeps:
   const keep = 1 - world.damping / substeps
   const stick = world.thickness * 0.5
   for (let sub = 0; sub < substeps; sub++) {
+    const [gx, gy, gz] = world.down ?? [0, -1, 0]
+    const gh = world.gravity * h
     for (let i = 0; i < n; i++) {
       if (!b.invMass[i]) continue
       const x = i * 3
-      v[x + 1] -= world.gravity * h
+      v[x] += gx * gh; v[x + 1] += gy * gh; v[x + 2] += gz * gh
       v[x] *= keep; v[x + 1] *= keep; v[x + 2] *= keep
       prev[x] = p[x]; prev[x + 1] = p[x + 1]; prev[x + 2] = p[x + 2]
       p[x] += v[x] * h; p[x + 1] += v[x + 1] * h; p[x + 2] += v[x + 2] * h
