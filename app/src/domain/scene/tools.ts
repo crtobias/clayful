@@ -98,7 +98,7 @@ export function describeScene(parts: Part[], selectedId: string | null) {
       id: p.id,
       name: p.name,
       material: p.image ? 'imagen' : p.material,
-      lowPoly: p.lowPoly ? (['', 'muy_bajo', 'bajo', 'medio'] as const)[p.lowPoly.level] : null,
+      lowPoly: p.lowPoly ? { detail: Math.round(p.lowPoly.level * 100) / 100 } : null,
       position: p.position.map(round),
       rotation: p.rotation.map((r) => round(r / DEG)),
       scale: p.scale.map(round),

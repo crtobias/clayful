@@ -4,7 +4,34 @@ import type { CommandResult, Part, SceneCommand } from './model'
 
 const HISTORY_LIMIT = 100
 
+/** Una pestaña: la escena del usuario o la de una sesión de Claude. */
+export interface SceneTab {
+  id: string
+  name: string
+  /** Sesión de Claude conectada ahora. */
+  live: boolean
+}
+
+interface Snapshot {
+  parts: Part[]
+  selectedId: string | null
+  past: Part[][]
+  future: Part[][]
+}
+
+export const MY_TAB = 'mia'
+
 interface SceneStore {
+  tabs: SceneTab[]
+  activeTab: string
+  /** Escenas de las pestañas que no se están viendo. */
+  saved: Record<string, Snapshot>
+  /** Abre (o actualiza) una pestaña sin cambiarse a ella. */
+  openTab: (id: string, name: string, live: boolean) => void
+  switchTab: (id: string) => void
+  closeTab: (id: string) => void
+  /** Marca qué sesiones de Claude siguen conectadas. */
+  setLive: (ids: string[]) => void
   parts: Part[]
   selectedId: string | null
   past: Part[][]
@@ -21,7 +48,47 @@ export const newId = (): string => Math.random().toString(36).slice(2, 10)
 
 const keepSelection = (parts: Part[], id: string | null) => (id && parts.some((p) => p.id === id) ? id : null)
 
+const EMPTY: Snapshot = { parts: [], selectedId: null, past: [], future: [] }
+
 export const useScene = create<SceneStore>((set, get) => ({
+  tabs: [{ id: MY_TAB, name: 'Mi escena', live: false }],
+  activeTab: MY_TAB,
+  saved: {},
+  openTab: (id, name, live) => set((s) => {
+    const hit = s.tabs.find((t) => t.id === id)
+    if (hit) return { tabs: s.tabs.map((t) => (t.id === id ? { ...t, name, live } : t)) }
+    // La misma sesión que volvió (reinicio de Claude): retoma su pestaña desconectada con su escena.
+    const old = s.tabs.find((t) => t.id !== MY_TAB && !t.live && t.name === name)
+    if (old) {
+      const saved = { ...s.saved }
+      if (saved[old.id]) { saved[id] = saved[old.id]; delete saved[old.id] }
+      return {
+        tabs: s.tabs.map((t) => (t === old ? { id, name, live } : t)),
+        saved,
+        activeTab: s.activeTab === old.id ? id : s.activeTab,
+      }
+    }
+    return { tabs: [...s.tabs, { id, name, live }] }
+  }),
+  switchTab: (id) => {
+    const s = get()
+    if (id === s.activeTab || !s.tabs.some((t) => t.id === id)) return
+    const current: Snapshot = { parts: s.parts, selectedId: s.selectedId, past: s.past, future: s.future }
+    const next = s.saved[id] ?? EMPTY
+    const saved = { ...s.saved, [s.activeTab]: current }
+    delete saved[id]
+    set({ ...next, saved, activeTab: id })
+  },
+  closeTab: (id) => {
+    const s = get()
+    if (id === MY_TAB) return
+    if (id === s.activeTab) s.switchTab(MY_TAB)
+    const after = get()
+    const saved = { ...after.saved }
+    delete saved[id]
+    set({ tabs: after.tabs.filter((t) => t.id !== id), saved })
+  },
+  setLive: (ids) => set((s) => ({ tabs: s.tabs.map((t) => (t.id === MY_TAB ? t : { ...t, live: ids.includes(t.id) })) })),
   parts: [],
   selectedId: null,
   past: [],

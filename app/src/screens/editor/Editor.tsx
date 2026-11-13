@@ -9,7 +9,7 @@ import type { LowPolyLevel, Part, Shape, Vec3 } from '@/domain/scene/model'
 import { buildMaterial } from '@/domain/materials/buildMaterial'
 import { fillColor } from '@/domain/paint/paint'
 import { clearMask, invertMask } from '@/domain/sculpt/brushes'
-import { useMcpBridge, type ToolHandler } from '@/domain/mcp/useMcpBridge'
+import { useMcpBridge, type ClaudeSession, type ToolHandler } from '@/domain/mcp/useMcpBridge'
 import type { MaterialSpec } from '@/shared/config/materials'
 import { refresh } from '@/shared/lib/meshOps'
 import { convertBlend, isDesktop, saveBytes } from '@/shared/lib/desktop'
@@ -18,13 +18,22 @@ import { t } from '@/shared/i18n/es'
 import { TopBar } from './TopBar/TopBar'
 import { ToolRail } from './ToolRail/ToolRail'
 import { Viewport } from './Viewport/Viewport'
+import { isFlying } from './Viewport/flyState'
 import { PartsPanel } from './PartsPanel/PartsPanel'
 import { SculptPanel } from './EditPanels/SculptPanel'
 import { PaintPanel } from './EditPanels/PaintPanel'
 import { Toast, type ToastMessage } from './Toast/Toast'
+import { TabBar } from './TabBar/TabBar'
+import { LibraryPanel } from './LibraryPanel/LibraryPanel'
+import { allItems, deleteMine, loadItem, saveMine, type LibraryItem } from '@/domain/library/library'
 import { LowPolyControl } from './LowPolyControl/LowPolyControl'
 import { claudeToast } from './claudeToast'
 import { runCode } from './runCode'
+import { restoreAutosave, startAutosave, whenRestored } from '@/domain/scene/autosave'
+import { isSimulatedCloth, simulate, type SimAction } from './physicsRun'
+import { PhysicsControl } from './PhysicsControl/PhysicsControl'
+import { DEFAULT_DENSITY } from '@/domain/physics/cloth'
+import { FABRIC_STIFFNESS } from '@/shared/config/materials'
 import { fillFromTool, gradientFromTool, maskFromTool, paintFromTool, sculptFromTool } from './mcpEdit'
 import {
   DEFAULT_PAINT, DEFAULT_SCULPT, LOOK_VIEWS,
@@ -77,6 +86,16 @@ export function Editor() {
   const [paint, setPaint] = useState<PaintSettings>(DEFAULT_PAINT)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [density, setDensity] = useState(DEFAULT_DENSITY)
+  /** null = la rigidez del tipo de tela. */
+  const [stiffness, setStiffness] = useState<number | null>(null)
+  const [simulating, setSimulating] = useState(false)
+  const [gravity, setGravity] = useState(1)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([])
+  const [libraryBusy, setLibraryBusy] = useState(false)
+  const [clothSize, setClothSize] = useState(1)
+  const [pinned, setPinned] = useState(false)
   const captureRef = useRef<CaptureFn | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const modeRef = useRef(mode)
@@ -140,8 +159,41 @@ export function Editor() {
     if (id && startEdit(id, false, true)) notify(t.moreDetail)
   }, [notify])
 
+  // ── Biblioteca ──
+  const refreshLibrary = useCallback(async () => { setLibraryItems(await allItems()) }, [])
+  const openLibrary = useCallback(() => { void refreshLibrary(); setLibraryOpen(true) }, [refreshLibrary])
+  const addFromLibrary = useCallback(async (item: LibraryItem) => {
+    const added = await importBytes(`${item.name}.glb`, await loadItem(item))
+    return added
+  }, [importBytes])
+  const saveSceneToLibrary = useCallback(async (name: string) => {
+    const s = useScene.getState()
+    if (s.parts.length === 0) throw new Error('La escena está vacía.')
+    const glb = await exportGlb(s.parts, materialFor)
+    const thumb = captureRef.current?.('actual')
+    const item = await saveMine(name || `Escena ${new Date().toLocaleDateString('es')}`, glb, thumb)
+    await refreshLibrary()
+    return item
+  }, [refreshLibrary])
+
+  const runSim = useCallback(async (partId: string, action: SimAction, opts: Parameters<typeof simulate>[2] = {}) => {
+    setSimulating(true)
+    try {
+      return await simulate(partId, action, opts)
+    } finally {
+      setSimulating(false)
+    }
+  }, [])
+
   /** Lo que pide Claude por MCP. */
-  const handleTool: ToolHandler = useCallback(async (name, args) => {
+  const handleTool: ToolHandler = useCallback(async (name, args, session) => {
+    await whenRestored()
+    // Cada sesión de Claude trabaja en su pestaña: se abre sola y se muestra.
+    if (session) {
+      const st = useScene.getState()
+      if (!st.tabs.some((tab) => tab.id === session.id)) st.openTab(session.id, session.name, true)
+      st.switchTab(session.id)
+    }
     const s = useScene.getState()
     switch (name) {
       case 'scene_info':
@@ -192,6 +244,33 @@ export function Editor() {
         notify(`Claude ${verb} ${part.name}`, true)
         return { part: part.name, vertices: g.attributes.position.count }
       }
+      case 'library_list': {
+        const items = await allItems()
+        return items.map(({ id, name, source, author, description, tags }) => ({ id, name, source, author, description, tags }))
+      }
+      case 'library_add': {
+        const item = (await allItems()).find((it) => it.id === args.id || it.name.toLowerCase() === String(args.id ?? '').toLowerCase())
+        if (!item) throw new Error('No encontré ese modelo. Usá library_list para ver los ids.')
+        const added = await addFromLibrary(item)
+        notify(`Claude agregó ${item.name}`, true)
+        const after = useScene.getState()
+        return { added: added.map((p) => ({ id: p.id, name: p.name })), ...describeScene(after.parts, after.selectedId) }
+      }
+      case 'library_save': {
+        const item = await saveSceneToLibrary(String(args.name ?? ''))
+        notify(t.library.saved(item.name), true)
+        return { id: item.id, name: item.name }
+      }
+      case 'simulate': {
+        const part = resolvePart(s.parts, args.part)
+        const action = String(args.action) as SimAction
+        if (!['tapar', 'soltar', 'gelatina'].includes(action)) throw new Error('action: tapar, soltar o gelatina.')
+        const num = (v: unknown) => (typeof v === 'number' ? v : undefined)
+        const out = await runSim(part.id, action, { density: num(args.density), stiffness: num(args.stiffness), hardness: num(args.hardness), gravity: num(args.gravity), size: num(args.size), pin: args.pin === 'arriba' ? 'arriba' : 'ninguno' })
+        notify(action === 'gelatina' ? `Claude hizo gelatina ${part.name}` : `Claude ${action === 'tapar' ? 'tapó con tela' : 'soltó'} ${part.name}`, true)
+        const after = useScene.getState()
+        return { ...out, ...describeScene(after.parts, after.selectedId) }
+      }
       case 'run_code': {
         const out = await runCode(String(args.code ?? ''), { startEdit })
         notify('Claude corrió código', true)
@@ -199,10 +278,12 @@ export function Editor() {
       }
       case 'set_low_poly': {
         const part = resolvePart(s.parts, args.part)
-        const levels: Record<string, LowPolyLevel | null> = { apagado: null, muy_bajo: 1, bajo: 2, medio: 3 }
-        if (!(String(args.level) in levels)) throw new Error('level: apagado, muy_bajo, bajo o medio.')
-        setLowPoly(part.id, levels[String(args.level)])
-        notify(`Claude ${levels[String(args.level)] ? 'hizo low poly' : 'volvió a suave'} ${part.name}`, true)
+        const levels: Record<string, LowPolyLevel | null> = { apagado: null, muy_bajo: 0.05, bajo: 0.2, medio: 0.4, alto: 0.7 }
+        if (typeof args.detail === 'number') levels.custom = Math.min(1, Math.max(0, args.detail))
+        const key = typeof args.detail === 'number' && args.level !== 'apagado' ? 'custom' : String(args.level)
+        if (!(key in levels)) throw new Error('Pasá detail (0 a 1) o level: apagado, muy_bajo, bajo, medio o alto.')
+        setLowPoly(part.id, levels[key])
+        notify(`Claude ${levels[key] !== null ? 'hizo low poly' : 'volvió a suave'} ${part.name}`, true)
         const after = useScene.getState()
         return describeScene(after.parts, after.selectedId)
       }
@@ -213,16 +294,37 @@ export function Editor() {
         return { created: res.created, ...describeScene(res.parts, res.selectedId) }
       }
     }
-  }, [importBytes, notify])
+  }, [importBytes, notify, runSim, addFromLibrary, saveSceneToLibrary])
 
-  const bridge = useMcpBridge(handleTool)
+  // Las pestañas se abren cuando una sesión trabaja (handleTool); acá solo se marca quién sigue conectado.
+  const onSessions = useCallback((sessions: ClaudeSession[]) => {
+    useScene.getState().setLive(sessions.map((ses) => ses.id))
+  }, [])
+
+  const bridge = useMcpBridge(handleTool, onSessions)
+  const tabs = useScene((s) => s.tabs)
+  const activeTab = useScene((s) => s.activeTab)
 
   const select = useCallback((id: string | null) => useScene.getState().run({ type: 'select', id }), [])
   const onCaptureReady = useCallback((fn: CaptureFn) => { captureRef.current = fn }, [])
 
+  // Guardado automático local: al abrir recupera todo y después guarda solo cada cambio.
+  useEffect(() => {
+    let stop: (() => void) | undefined
+    let alive = true
+    void restoreAutosave().then(() => {
+      if (!alive) return
+      stop = startAutosave()
+      // Al entrar con la escena vacía, se abre la Biblioteca para arrancar desde un modelo.
+      if (useScene.getState().parts.length === 0) openLibrary()
+    })
+    return () => { alive = false; stop?.() }
+  }, [openLibrary])
+
   // Atajos de teclado.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isFlying()) return
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       const s = useScene.getState()
       const mod = e.metaKey || e.ctrlKey
@@ -243,7 +345,8 @@ export function Editor() {
       if (modeRef.current !== 'modelar') return
       if ((key === 'delete' || key === 'backspace') && s.selectedId) { s.run({ type: 'delete', id: s.selectedId }); return }
       if (key === 'escape') { s.run({ type: 'select', id: null }); return }
-      const tools: Record<string, Tool> = { q: 'elegir', w: 'mover', e: 'girar', r: 'escalar' }
+      // W A S D Q E son para moverse por la escena (FlyControls): las herramientas van en V G R T.
+      const tools: Record<string, Tool> = { v: 'elegir', g: 'mover', r: 'girar', t: 'escalar' }
       if (tools[key]) setTool(tools[key])
     }
     window.addEventListener('keydown', onKey)
@@ -288,6 +391,9 @@ export function Editor() {
         onRedo={() => useScene.getState().redo()}
         onExport={exportScene}
       />
+      {tabs.length > 1 && (
+        <TabBar tabs={tabs} active={activeTab} onSwitch={(id) => useScene.getState().switchTab(id)} onClose={(id) => useScene.getState().closeTab(id)} />
+      )}
       <div className={styles.body}>
         <ToolRail
           mode={mode}
@@ -299,6 +405,7 @@ export function Editor() {
           onPaintTool={(paintTool) => setPaint((p) => ({ ...p, tool: paintTool }))}
           onAddShape={(shape: Shape) => useScene.getState().run({ type: 'add_shape', shape })}
           onOpen={() => fileInput.current?.click()}
+          onLibrary={openLibrary}
         />
         <div className={styles.stage}>
           <Viewport
@@ -311,11 +418,37 @@ export function Editor() {
             hooks={hooks}
             onSelect={select}
             onTransformStart={() => useScene.getState().checkpoint()}
-            onTransformEnd={(id, tr: { position: Vec3; rotation: Vec3; scale: Vec3 }) =>
-              useScene.getState().run({ type: 'transform', id, ...tr }, { record: false })}
+            onTransformEnd={(id, tr: { position: Vec3; rotation: Vec3; scale: Vec3 }) => {
+              useScene.getState().run({ type: 'transform', id, ...tr }, { record: false })
+              // Una tela ya simulada que movés vuelve a caer desde donde la dejaste.
+              const moved = useScene.getState().parts.find((p) => p.id === id)
+              if (moved && isSimulatedCloth(moved) && !simulating) {
+                void runSim(id, 'soltar', { density, gravity, stiffness: stiffness ?? undefined, fromOriginal: false }).catch((e) => notify(errorText(e)))
+              }
+            }}
             onCaptureReady={onCaptureReady}
           />
           <Toast message={toast} />
+          {libraryOpen && (
+            <LibraryPanel
+              items={libraryItems}
+              canSave={parts.length > 0}
+              busy={libraryBusy}
+              onClose={() => setLibraryOpen(false)}
+              onAdd={(item) => {
+                setLibraryBusy(true)
+                addFromLibrary(item)
+                  .then(() => { notify(t.library.added(item.name)); setLibraryOpen(false) })
+                  .catch((e) => notify(errorText(e)))
+                  .finally(() => setLibraryBusy(false))
+              }}
+              onSave={(name) => {
+                setLibraryBusy(true)
+                saveSceneToLibrary(name).then((it) => notify(t.library.saved(it.name))).catch((e) => notify(errorText(e))).finally(() => setLibraryBusy(false))
+              }}
+              onDelete={(item) => { void deleteMine(item.id).then(refreshLibrary) }}
+            />
+          )}
           {dragging && <div className={styles.drop}>{t.dropHere}</div>}
         </div>
         {mode === 'esculpir' && (
@@ -340,6 +473,25 @@ export function Editor() {
             onDelete={(id) => useScene.getState().run({ type: 'delete', id })}
             onMaterial={(id, patch: Partial<MaterialSpec>) => useScene.getState().run({ type: 'set_material', id, material: patch })}
             lowPoly={selected && !selected.image ? <LowPolyControl level={selected.lowPoly?.level ?? null} onChange={(l) => setLowPoly(selected.id, l)} /> : null}
+            physics={selected && !selected.image ? (
+              <PhysicsControl
+                kind={selected.material.preset === 'gelatina' ? 'gelatina' : 'tela'}
+                disabled={selected.material.preset !== 'tela' && selected.material.preset !== 'gelatina'}
+                density={density}
+                stiffness={stiffness ?? FABRIC_STIFFNESS[selected.material.fabric ?? 'algodon']}
+                gravity={gravity}
+                onGravity={setGravity}
+                size={clothSize}
+                onSize={setClothSize}
+                pinned={pinned}
+                onPinned={setPinned}
+                running={simulating}
+                onDensity={setDensity}
+                onStiffness={setStiffness}
+                onCover={() => void runSim(selected.id, 'tapar', { density, gravity, size: clothSize, stiffness: stiffness ?? undefined }).catch((e) => notify(errorText(e)))}
+                onDrop={() => void runSim(selected.id, selected.material.preset === 'gelatina' ? 'gelatina' : 'soltar', { density, gravity, pin: pinned ? 'arriba' : 'ninguno', stiffness: stiffness ?? undefined }).catch((e) => notify(errorText(e)))}
+              />
+            ) : null}
           />
         )}
       </div>

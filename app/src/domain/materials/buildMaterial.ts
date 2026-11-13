@@ -1,4 +1,4 @@
-import { Color, DoubleSide, MeshBasicMaterial, MeshPhysicalMaterial, SRGBColorSpace, TextureLoader, Vector2, type Material } from 'three'
+import { Color, DoubleSide, FrontSide, MeshBasicMaterial, MeshPhysicalMaterial, SRGBColorSpace, TextureLoader, Vector2, type Material } from 'three'
 import type { MaterialSpec } from '@/shared/config/materials'
 import { materialParams } from './params'
 import { colorTexture, normalTexture } from './textures'
@@ -25,6 +25,10 @@ export function buildMaterial(spec: MaterialSpec, original?: Material, vertexCol
     sheenColor: new Color(p.sheenColor ?? '#000000'),
     clearcoat: p.clearcoat ?? 0,
     clearcoatRoughness: p.clearcoatRoughness ?? 0,
+    anisotropy: p.anisotropy ?? 0,
+    attenuationColor: new Color(p.attenuationColor ?? '#ffffff'),
+    attenuationDistance: p.attenuationDistance ?? Infinity,
+    side: p.doubleSided ? DoubleSide : FrontSide,
     vertexColors,
     flatShading: flat,
   })
@@ -33,6 +37,7 @@ export function buildMaterial(spec: MaterialSpec, original?: Material, vertexCol
   } else if (p.pattern) {
     mat.normalMap = normalTexture(p.pattern, p.repeat ?? 8)
     mat.normalScale = new Vector2(p.relief ?? 0.5, p.relief ?? 0.5)
+    if (p.tint) mat.map = colorTexture(p.pattern, p.repeat ?? 8, p.tint)
   }
   cache.set(key, mat)
   return mat

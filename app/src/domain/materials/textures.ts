@@ -41,10 +41,31 @@ function heightFn(pattern: Pattern): (x: number, y: number) => number {
     case 'knit': {
       // Tejido de lana: columnas de "V".
       return (x, y) => {
-        const col = x % 16
-        const v = Math.abs(col - 8) / 8
-        return 0.5 + 0.5 * Math.sin(TAU * ((y / 16) + v * 0.5))
+        // Punto jersey: columnas de "V" gruesas, cada una con dos lazos.
+        const col = x % 32
+        const side = col < 16 ? col : 31 - col
+        const rowPos = (y + side * 0.9) % 16
+        const loop = Math.sin((Math.PI * rowPos) / 16)
+        const edge = Math.sin((Math.PI * (col % 16)) / 16)
+        return Math.max(0, loop) ** 0.7 * edge ** 0.5
       }
+    }
+    case 'burlap': {
+      // Arpillera: hilos gruesos e irregulares, con huecos entre medio.
+      const n = periodicNoise(16, 5)
+      return (x, y) => {
+        const cx = x % 16, cy = y % 16
+        const over = (Math.floor(x / 16) + Math.floor(y / 16)) % 2 === 0
+        const warp = Math.max(0, Math.sin((Math.PI * cx) / 16)) ** 0.6
+        const weft = Math.max(0, Math.sin((Math.PI * cy) / 16)) ** 0.6
+        const h = over ? Math.max(warp * 0.9, weft * 0.6) : Math.max(weft * 0.9, warp * 0.6)
+        return h * (0.75 + 0.25 * n(x, y))
+      }
+    }
+    case 'fuzz': {
+      // Pelusa: lana, terciopelo.
+      const n1 = periodicNoise(64, 7), n2 = periodicNoise(128, 8)
+      return (x, y) => 0.5 * n1(x, y) + 0.5 * n2(x, y)
     }
     case 'grain': {
       const n1 = periodicNoise(32, 1), n2 = periodicNoise(64, 2)
@@ -98,15 +119,15 @@ export function normalTexture(pattern: Pattern, repeat: number): Texture {
 }
 
 /** Mapa de color en grises (se multiplica por el color del material). Para la madera. */
-export function colorTexture(pattern: Pattern, repeat: number): Texture {
-  const key = `c:${pattern}:${repeat}`
+export function colorTexture(pattern: Pattern, repeat: number, contrast = 0.28): Texture {
+  const key = `c:${pattern}:${repeat}:${contrast}`
   const hit = cache.get(key)
   if (hit) return hit
   const h = heightFn(pattern)
   const [canvas, ctx, img] = makeCanvas()
   for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
-      const v = 255 * (0.72 + 0.28 * h(x, y))
+      const v = 255 * (1 - contrast + contrast * h(x, y))
       const i = (y * SIZE + x) * 4
       img.data[i] = img.data[i + 1] = img.data[i + 2] = v
       img.data[i + 3] = 255

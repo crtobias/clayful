@@ -16,6 +16,7 @@ interface Props {
   onPaintTool: (tool: PaintTool) => void
   onAddShape: (shape: Shape) => void
   onOpen: () => void
+  onLibrary: () => void
 }
 
 const SHAPE_BUTTONS: { shape: Shape; icon: IconName }[] = [
@@ -28,13 +29,13 @@ const SHAPE_BUTTONS: { shape: Shape; icon: IconName }[] = [
 ]
 
 const TOOL_BUTTONS: { tool: Tool; icon: IconName; key: string }[] = [
-  { tool: 'elegir', icon: 'pointer', key: 'Q' },
-  { tool: 'mover', icon: 'move', key: 'W' },
-  { tool: 'girar', icon: 'rotate', key: 'E' },
-  { tool: 'escalar', icon: 'scale', key: 'R' },
+  { tool: 'elegir', icon: 'pointer', key: 'V' },
+  { tool: 'mover', icon: 'move', key: 'G' },
+  { tool: 'girar', icon: 'rotate', key: 'R' },
+  { tool: 'escalar', icon: 'scale', key: 'T' },
 ]
 
-export function ToolRail({ mode, tool, brush, paintTool, onTool, onBrush, onPaintTool, onAddShape, onOpen }: Props) {
+export function ToolRail({ mode, tool, brush, paintTool, onTool, onBrush, onPaintTool, onAddShape, onOpen, onLibrary }: Props) {
   if (mode === 'esculpir') {
     return (
       <nav className={styles.rail} aria-label="Pinceles">
@@ -62,6 +63,7 @@ export function ToolRail({ mode, tool, brush, paintTool, onTool, onBrush, onPain
   return (
     <nav className={styles.rail} aria-label="Herramientas">
       <span className={styles.label}>{t.add}</span>
+      <button type="button" className={styles.tool} onClick={onLibrary}><Icon name="library" size={24} />{t.library.button}</button>
       <button type="button" className={styles.tool} onClick={onOpen}><Icon name="open" size={24} />{t.open}</button>
       {SHAPE_BUTTONS.map(({ shape, icon }) => (
         <button key={shape} type="button" className={styles.tool} onClick={() => onAddShape(shape)}>

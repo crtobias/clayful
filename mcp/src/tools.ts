@@ -5,8 +5,8 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { AppBridge } from './bridge.js'
 
-const PRESETS = ['arcilla', 'tela', 'vidrio', 'metal', 'madera', 'plastico'] as const
-const FABRICS = ['algodon', 'jean', 'lana', 'seda', 'cuero'] as const
+const PRESETS = ['arcilla', 'tela', 'gelatina', 'vidrio', 'metal', 'madera', 'plastico'] as const
+const FABRICS = ['algodon', 'jean', 'lana', 'punto', 'seda', 'raso', 'terciopelo', 'arpillera', 'cuero'] as const
 const SHAPES = ['cubo', 'esfera', 'cilindro', 'cono', 'dona', 'plano'] as const
 const VIEWS = ['actual', 'frente', 'atras', 'izquierda', 'derecha', 'arriba', 'perspectiva'] as const
 const BRUSHES = ['sumar', 'quitar', 'arcilla', 'capa', 'aplanar', 'suavizar', 'inflar', 'pellizcar', 'pliegue', 'arrastrar', 'gancho', 'cortar', 'mascara'] as const
@@ -20,7 +20,7 @@ const material = {
   preset: z.enum(PRESETS).optional().describe('Material de un clic.'),
   fabric: z.enum(FABRICS).optional().describe('Tipo de tela (implica preset tela).'),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().describe('Color #rrggbb.'),
-  amount: z.number().min(0).max(1).optional().describe('Ajuste propio: transparencia del vidrio, brillo de metal/plástico/arcilla.'),
+  amount: z.number().min(0).max(1).optional().describe('Ajuste propio: transparencia del vidrio, brillo de metal/plástico/arcilla, dureza de la gelatina.'),
 }
 
 const text = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] })
@@ -160,8 +160,51 @@ export function registerTools(server: McpServer, bridge: AppBridge) {
   server.registerTool('set_low_poly', {
     title: 'Low poly',
     description: 'Pone una parte en estilo low poly (caras planas, pocas) o la vuelve suave. Los trazos de esculpir y pintar sobre una parte low poly siguen siendo low poly.',
-    inputSchema: { part, level: z.enum(['apagado', 'muy_bajo', 'bajo', 'medio']) },
+    inputSchema: {
+      part,
+      detail: z.number().min(0).max(1).optional().describe('Detalle: 0 = muy facetado, 1 = casi liso. Usalo en vez de level.'),
+      level: z.enum(['apagado', 'muy_bajo', 'bajo', 'medio', 'alto']).optional().describe('Atajo; "apagado" vuelve a suave.'),
+    },
   }, relay('set_low_poly'))
+
+  server.registerTool('library_list', {
+    title: 'Biblioteca: ver modelos',
+    description: 'Lista los modelos de la Biblioteca: los que vienen con Clayful (source "clayful", ej. "raton-con-capa": ejemplo de referencia de ropa con física de tela) y los que guardó el usuario (source "mio"). Miralos antes de armar algo parecido.',
+    inputSchema: {},
+  }, relay('library_list'))
+
+  server.registerTool('library_add', {
+    title: 'Biblioteca: agregar a la escena',
+    description: 'Agrega un modelo de la Biblioteca a la escena (por id o nombre). Sirve para partir de un ejemplo (por ejemplo, ver cómo está hecha la capa del ratón) o reusar algo del usuario.',
+    inputSchema: { id: z.string().describe('Id o nombre (ver library_list).') },
+  }, relay('library_add'))
+
+  server.registerTool('library_save', {
+    title: 'Biblioteca: guardar la escena',
+    description: 'Guarda la escena actual en "Mis modelos" de la Biblioteca del usuario (con miniatura).',
+    inputSchema: { name: z.string().describe('Nombre del modelo.') },
+  }, relay('library_save'))
+
+  server.registerTool('simulate', {
+    title: 'Física: tela y gelatina',
+    description: [
+      'Física de un clic (como Cloth y Soft Body de Blender). La simulación corre en vivo y termina sola.',
+      '- tapar: cae una tela nueva sobre la parte y se pliega sobre todo lo que toca (crea la parte "Tela sobre …" con el material de la parte si es tela).',
+      '- soltar: la parte es plana (un plano) y cae como tela.',
+      '- gelatina: la parte se aplasta y tiembla; hardness = dureza.',
+      'density = celdas por lado (24–140; triángulos = 2·n²; más = pliegues más finos). stiffness 0 = seda, 1 = cuero (por defecto, la del tipo de tela).',
+    ].join('\n'),
+    inputSchema: {
+      part,
+      action: z.enum(['tapar', 'soltar', 'gelatina']),
+      density: z.number().min(24).max(140).optional(),
+      stiffness: z.number().min(0).max(1).optional(),
+      hardness: z.number().min(0).max(1).optional(),
+      gravity: z.number().min(0).max(3).optional().describe('1 = normal, 0 = flota, 3 = muy pesada.'),
+      size: z.number().min(0.3).max(3).optional().describe('Solo tapar: tamaño de la tela (1 = justo para llegar al piso).'),
+      pin: z.enum(['arriba', 'ninguno']).optional().describe('Solo soltar: "arriba" deja fijo el borde de arriba (cortinas, banderas, toldos colgados).'),
+    },
+  }, relay('simulate'))
 
   server.registerTool('run_code', {
     title: 'Correr código',

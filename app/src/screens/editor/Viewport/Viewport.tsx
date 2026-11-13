@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'rea
 import { Canvas, useThree } from '@react-three/fiber'
 import { ContactShadows, Grid, OrbitControls, TransformControls } from '@react-three/drei'
 import {
+  MOUSE,
   Box3, BoxGeometry, BufferGeometry, CanvasTexture, Color, DoubleSide, EdgesGeometry, Group, Matrix4, Mesh, Object3D, PMREMGenerator,
   PerspectiveCamera, Plane, Quaternion, Raycaster, SRGBColorSpace, ShaderMaterial, Vector2, Vector3, type Intersection,
 } from 'three'
@@ -17,6 +18,7 @@ import { symmetryCopies, transformDelta } from '@/shared/lib/symmetry'
 import { t } from '@/shared/i18n/es'
 import type { CaptureFn, EditHooks, LookView, Mode, PaintSettings, SculptSettings, Tool } from '../types'
 import styles from './Viewport.module.scss'
+import { FlyControls } from './FlyControls'
 
 interface Props {
   parts: Part[]
@@ -84,7 +86,9 @@ export function Viewport(props: Props) {
             })}
           />
         )}
-        <OrbitControls makeDefault />
+        {/* Botón derecho = volar como en Godot (FlyControls); la órbita usa izquierdo y rueda. */}
+        <OrbitControls makeDefault mouseButtons={{ LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.PAN, RIGHT: null as unknown as MOUSE }} />
+        <FlyControls />
         {mode !== 'modelar' && <StrokeController {...props} meshes={meshes} />}
         <CaptureBridge onReady={onCaptureReady} />
       </Canvas>

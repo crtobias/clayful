@@ -15,6 +15,8 @@ interface Props {
   onMaterial: (id: string, patch: Partial<MaterialSpec>) => void
   /** Control de low poly de la parte elegida. */
   lowPoly: ReactNode
+  /** Física (tela, gelatina) de la parte elegida: va debajo del material. */
+  physics?: ReactNode
 }
 
 function materialLabel(part: Part): string {
@@ -24,7 +26,7 @@ function materialLabel(part: Part): string {
   return part.lowPoly ? `${base} · ${t.lowPoly}` : base
 }
 
-export function PartsPanel({ parts, selectedId, onSelect, onDuplicate, onDelete, onMaterial, lowPoly }: Props) {
+export function PartsPanel({ parts, selectedId, onSelect, onDuplicate, onDelete, onMaterial, lowPoly, physics }: Props) {
   const selected = parts.find((p) => p.id === selectedId)
   return (
     <aside className={styles.panel} aria-label="Propiedades">
@@ -62,6 +64,7 @@ export function PartsPanel({ parts, selectedId, onSelect, onDuplicate, onDelete,
               onChange={(patch) => onMaterial(selected.id, patch)}
             />
           )}
+          {physics}
         </>
       ) : (
         parts.length > 0 && <p className={styles.muted}>{t.pickPart}</p>

@@ -9,3 +9,8 @@
   &:hover { border-color: #b9bec8; }
 }
 .chip.active { border: 2px solid var(--accent); background: var(--accent-softer); color: var(--accent-text); font-weight: 600; }
+.row { display: flex; flex-direction: column; gap: 4px;
+  input { width: 100%; accent-color: var(--accent); } }
+.label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 500; }
+.value { color: var(--text-2); font-variant-numeric: tabular-nums; font-weight: 400; }
+.ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-2); }

@@ -1,0 +1,11 @@
+[
+  {
+    "id": "raton-con-capa",
+    "name": "Ratón con capa",
+    "author": "crtobias",
+    "description": "Personaje chibi con capa de lana hecha con la física de tela (abotonada al cuello, abierta adelante), cuello de capucha, cara esculpida y zapatos. Ejemplo de referencia para hacer ropa.",
+    "tags": ["personaje", "ropa", "tela", "capa"],
+    "file": "raton-con-capa.glb",
+    "thumb": "raton-con-capa.jpg"
+  }
+]

@@ -1,0 +1,12 @@
+.bar { display: flex; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--border); background: var(--surface); overflow-x: auto; }
+.tab {
+  display: flex; align-items: center; flex: none; height: 30px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+  &:hover { border-color: #b9bec8; }
+}
+.tab.active { border: 2px solid var(--accent); background: var(--accent-softer); color: var(--accent-text); }
+.name { display: flex; align-items: center; gap: 6px; height: 100%; padding: 0 12px; border: none; background: none; font: inherit; font-size: 13px; font-weight: 500; color: inherit; cursor: pointer; }
+.active .name { font-weight: 600; }
+.dot { width: 8px; height: 8px; border-radius: 999px; background: #b9bec8; }
+.dot.live { background: #2f9e68; }
+.close { width: 26px; height: 100%; margin-left: -6px; border: none; background: none; font-size: 16px; color: var(--text-2); cursor: pointer; border-radius: 999px;
+  &:hover { color: var(--text); } }

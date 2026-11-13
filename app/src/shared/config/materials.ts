@@ -1,8 +1,8 @@
 /** Presets de material que el usuario ve. 'original' existe solo para modelos importados. */
-export const MATERIAL_PRESETS = ['arcilla', 'tela', 'vidrio', 'metal', 'madera', 'plastico'] as const
+export const MATERIAL_PRESETS = ['arcilla', 'tela', 'gelatina', 'vidrio', 'metal', 'madera', 'plastico'] as const
 export type MaterialPreset = (typeof MATERIAL_PRESETS)[number] | 'original'
 
-export const FABRIC_TYPES = ['algodon', 'jean', 'lana', 'seda', 'cuero'] as const
+export const FABRIC_TYPES = ['algodon', 'jean', 'lana', 'punto', 'seda', 'raso', 'terciopelo', 'arpillera', 'cuero'] as const
 export type FabricType = (typeof FABRIC_TYPES)[number]
 
 export interface MaterialSpec {
@@ -18,6 +18,7 @@ export interface MaterialSpec {
 export const PRESET_COLOR: Record<MaterialPreset, string> = {
   arcilla: '#d59e84',
   tela: '#e5484d',
+  gelatina: '#e5484d',
   vidrio: '#cfe6f5',
   metal: '#c9cdd3',
   madera: '#b9834a',
@@ -29,13 +30,23 @@ export const FABRIC_COLOR: Record<FabricType, string> = {
   algodon: '#e5484d',
   jean: '#3b5b8f',
   lana: '#c9a27a',
-  seda: '#8b7cf6',
+  punto: '#b5483f',
+  seda: '#2f7fc4',
+  raso: '#c8102e',
+  terciopelo: '#8e1f5f',
+  arpillera: '#9a7a4e',
   cuero: '#6b3f24',
+}
+
+/** Rigidez de cada tela al doblarse (0 = cae como seda, 1 = dura como cuero). La física la usa por defecto. */
+export const FABRIC_STIFFNESS: Record<FabricType, number> = {
+  seda: 0.1, raso: 0.15, algodon: 0.35, terciopelo: 0.4, punto: 0.45, lana: 0.5, jean: 0.6, arpillera: 0.7, cuero: 0.85,
 }
 
 /** Presets con un ajuste (slider) y su valor por defecto. */
 export const PRESET_AMOUNT: Partial<Record<MaterialPreset, number>> = {
   arcilla: 0.2,
+  gelatina: 0.4,
   vidrio: 0.85,
   metal: 0.7,
   plastico: 0.5,

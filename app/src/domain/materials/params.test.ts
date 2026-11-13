@@ -10,7 +10,8 @@ describe('materialParams', () => {
   })
   it('tela: cada tipo tiene su trama', () => {
     expect(materialParams({ preset: 'tela', color: '#3b5b8f', fabric: 'jean' }).pattern).toBe('twill')
-    expect(materialParams({ preset: 'tela', color: '#c9a27a', fabric: 'lana' }).pattern).toBe('knit')
+    expect(materialParams({ preset: 'tela', color: '#c9a27a', fabric: 'punto' }).pattern).toBe('knit')
+    expect(materialParams({ preset: 'tela', color: '#9a7a4e', fabric: 'arpillera' }).pattern).toBe('burlap')
     expect(materialParams({ preset: 'tela', color: '#e5484d' }).pattern).toBe('weave')
   })
   it('tela: tiene brillo de terciopelo (sheen)', () => {

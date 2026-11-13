@@ -7,7 +7,8 @@ export type Shape = (typeof SHAPES)[number]
 
 /** Una malla de la escena. La geometría vive en el registro (geometry.ts), no en el estado. */
 /** 1 = muy bajo, 2 = bajo, 3 = medio. */
-export type LowPolyLevel = 1 | 2 | 3
+/** Detalle del low poly: 0 = muy facetado, 1 = casi liso. */
+export type LowPolyLevel = number
 
 export interface LowPoly {
   level: LowPolyLevel

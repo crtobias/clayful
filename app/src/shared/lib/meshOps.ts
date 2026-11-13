@@ -52,8 +52,25 @@ export function subdivide(g: BufferGeometry): BufferGeometry {
   return next
 }
 
+/**
+ * Coordenadas de textura por proyección de caja, en metros: cada vértice usa el plano al que más mira.
+ * Las mallas editables pierden las UV al soldarse y subdividirse; sin esto la trama de la tela desaparece.
+ */
+export function boxUV(g: BufferGeometry): void {
+  const p = g.attributes.position, n = g.attributes.normal
+  const uv = new Float32Array(p.count * 2)
+  for (let i = 0; i < p.count; i++) {
+    const ax = Math.abs(n.getX(i)), ay = Math.abs(n.getY(i)), az = Math.abs(n.getZ(i))
+    if (ax >= ay && ax >= az) { uv[i * 2] = p.getZ(i); uv[i * 2 + 1] = p.getY(i) }
+    else if (ay >= az) { uv[i * 2] = p.getX(i); uv[i * 2 + 1] = p.getZ(i) }
+    else { uv[i * 2] = p.getX(i); uv[i * 2 + 1] = p.getY(i) }
+  }
+  g.setAttribute('uv', new BufferAttribute(uv, 2))
+}
+
 function finish(g: BufferGeometry): BufferGeometry {
   g.computeVertexNormals()
+  if (!g.hasAttribute('uv')) boxUV(g)
   g.computeBoundingBox()
   g.computeBoundingSphere()
   g.userData = { editable: true, topo: `t${++topoSeq}` }
@@ -183,28 +200,56 @@ export function clusterDecimate(src: BufferGeometry, cell: number): BufferGeomet
   }
   const seen = new Set<string>()
   const tris: number[] = []
+  // Al juntar vértices, un triángulo puede quedar dado vuelta: se ve como un triangulito oscuro.
+  // Se compara con la normal del triángulo original y, si se invirtió, se da vuelta.
+  const normal = (ia: number, ib: number, ic: number, read: (i: number, k: number) => number) => {
+    const ux = read(ib, 0) - read(ia, 0), uy = read(ib, 1) - read(ia, 1), uz = read(ib, 2) - read(ia, 2)
+    const vx = read(ic, 0) - read(ia, 0), vy = read(ic, 1) - read(ia, 1), vz = read(ic, 2) - read(ia, 2)
+    return [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx]
+  }
+  const readSrc = (i: number, k: number) => (k === 0 ? pos.getX(i) : k === 1 ? pos.getY(i) : pos.getZ(i))
+  const readNew = (i: number, k: number) => verts[i * 3 + k]
   for (let t = 0; t < idx.length; t += 3) {
     const a = cluster[idx[t]], b = cluster[idx[t + 1]], c = cluster[idx[t + 2]]
     if (a === b || b === c || a === c) continue
     const key = [a, b, c].sort((p, q) => p - q).join(',')
     if (seen.has(key)) continue
     seen.add(key)
-    tris.push(a, b, c)
+    const n0 = normal(idx[t], idx[t + 1], idx[t + 2], readSrc)
+    const n1 = normal(a, b, c, readNew)
+    if (n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2] < 0) tris.push(a, c, b)
+    else tris.push(a, b, c)
+  }
+  // Solo los vértices que usa algún triángulo: los sueltos no se ven, pero inflan la caja
+  // y en la física caen solos al piso.
+  const remap = new Int32Array(n).fill(-1)
+  let used = 0
+  for (const v of tris) if (remap[v] < 0) remap[v] = used++
+  const outPos = new Float32Array(used * 3), outCol = new Float32Array(used * 3)
+  for (let c = 0; c < n; c++) {
+    const r = remap[c]
+    if (r < 0) continue
+    for (let k = 0; k < 3; k++) { outPos[r * 3 + k] = verts[c * 3 + k]; outCol[r * 3 + k] = vcol[c * 3 + k] }
   }
   const g = new BufferGeometry()
-  g.setAttribute('position', new BufferAttribute(verts, 3))
-  g.setAttribute('color', new BufferAttribute(vcol, 3))
-  g.setAttribute('mask', new BufferAttribute(new Float32Array(n), 1))
-  g.setIndex(new BufferAttribute(new Uint32Array(tris), 1))
+  g.setAttribute('position', new BufferAttribute(outPos, 3))
+  g.setAttribute('color', new BufferAttribute(outCol, 3))
+  g.setAttribute('mask', new BufferAttribute(new Float32Array(used), 1))
+  g.setIndex(new BufferAttribute(Uint32Array.from(tris, (v) => remap[v]), 1))
   return finish(g)
 }
 
 /** Tamaño de celda para un nivel de low poly (1 = muy bajo, 3 = medio), según el tamaño de la pieza. */
-export function lowPolyCell(g: BufferGeometry, level: 1 | 2 | 3): number {
+/**
+ * Tamaño de celda para el low poly. `detail` va de 0 (muy facetado: ~4 caras a lo ancho) a 1 (casi liso: ~80).
+ * Escala exponencial para que la barra se sienta pareja. (Guardados viejos: 2 y 3 eran "bajo" y "medio".)
+ */
+export function lowPolyCell(g: BufferGeometry, detail: number): number {
   g.computeBoundingBox()
   const size = g.boundingBox!.getSize(new Vector3())
   const d = Math.max(size.x, size.y, size.z) || 1
-  return d / ({ 1: 5, 2: 8, 3: 13 } as const)[level]
+  const t = detail === 2 ? 0.2 : detail === 3 ? 0.4 : Math.min(1, Math.max(0, detail))
+  return d / (4 * 20 ** t)
 }
 
 /** Caras planas de verdad para exportar: cada triángulo con su normal y un solo color. */

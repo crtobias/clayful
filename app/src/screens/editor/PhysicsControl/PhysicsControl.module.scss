@@ -1,0 +1,22 @@
+.box { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-m); }
+.text { display: flex; flex-direction: column; gap: 2px; }
+.help { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+.row { display: flex; flex-direction: column; gap: 4px;
+  input { width: 100%; accent-color: var(--accent); } }
+.label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 500; }
+.value { color: var(--text-2); font-variant-numeric: tabular-nums; font-weight: 400; }
+.ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-2); }
+.buttons { display: flex; gap: 8px; }
+.divider { height: 1px; background: var(--border); }
+.primary, .secondary {
+  flex: none; width: 100%; height: 38px; border-radius: 999px; font-weight: 600; cursor: pointer;
+  &:disabled { opacity: 0.6; cursor: progress; }
+}
+.primary { border: none; background: var(--accent); color: #fff; }
+.secondary { border: 1px solid var(--border); background: var(--surface);
+  &:hover:not(:disabled) { border-color: #b9bec8; } }
+.off { opacity: 0.4; filter: grayscale(1);
+  button, input { cursor: not-allowed; } }
+.check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); cursor: pointer;
+  strong { color: var(--text); font-weight: 500; }
+  input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; } }
